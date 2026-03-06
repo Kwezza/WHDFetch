@@ -1,0 +1,14 @@
+# Build outputs
+build/
+Bin/
+
+# Object files
+*.o
+*.bak
+
+# VBCC temp files
+*.lnk
+
+# Windows
+Thumbs.db
+desktop.ini
