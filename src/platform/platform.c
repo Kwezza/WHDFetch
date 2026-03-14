@@ -211,7 +211,12 @@ void amiga_free_debug(void *ptr, const char *file, int line) {
         log_error(LOG_MEMORY, "FREE: UNTRACKED pointer 0x%08lx at %s:%d\n",
                   (unsigned long)ptr, file, line);
     }
-    free(ptr);  /* still free to avoid leak */
+
+#if defined(__AMIGA__)
+    FreeVec(ptr);  /* AllocVec/FreeVec must stay paired on Amiga */
+#else
+    free(ptr);     /* still free to avoid leak */
+#endif
 }
 
 /*---------------------------------------------------------------------------*/

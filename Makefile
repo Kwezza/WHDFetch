@@ -6,6 +6,7 @@
 #   make CONSOLE=1          - enable console window + printf output
 #   make MEMTRACK=1         - enable memory leak detection
 #   make CONSOLE=1 MEMTRACK=1
+#   make AUTO=0             - disable VBCC auto startup/cleanup code
 #   make clean              - remove build artefacts
 #   make help               - show this help
 #
@@ -16,6 +17,7 @@
 
 CONSOLE  ?= 0
 MEMTRACK ?= 0
+AUTO     ?= 1
 
 # ---------------------------------------------------------------------------
 # Project identity - change these for each new project
@@ -72,7 +74,13 @@ CFLAGS = +aos68k -c99 -cpu=68000 -O2 -size \
          $(CONSOLE_FLAG) \
          $(MEMTRACK_FLAG)
 
-LDFLAGS = +aos68k -cpu=68000 -O2 -size -final -lamiga -lauto
+LDFLAGS_BASE = +aos68k -cpu=68000 -O2 -size -final -lamiga
+
+ifeq ($(AUTO),1)
+	LDFLAGS = $(LDFLAGS_BASE) -lauto
+else
+	LDFLAGS = $(LDFLAGS_BASE)
+endif
 
 # ---------------------------------------------------------------------------
 # Source files
@@ -198,6 +206,7 @@ help:
 	@echo   make                    Build release (no console, no memtrack)
 	@echo   make CONSOLE=1          Enable console window
 	@echo   make MEMTRACK=1         Enable memory tracking
+	@echo   make AUTO=0             Disable -lauto for shutdown diagnostics
 	@echo   make clean              Remove build artefacts
 	@echo.
 	@echo   APP_NAME=$(APP_NAME)  (edit src/platform/platform.h to change AMIGA_APP_NAME)
@@ -205,3 +214,4 @@ help:
 	@echo   BIN=$(BIN)
 	@echo   CONSOLE=$(CONSOLE)
 	@echo   MEMTRACK=$(MEMTRACK)
+	@echo   AUTO=$(AUTO)

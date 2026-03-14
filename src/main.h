@@ -2,15 +2,11 @@
 #define MAIN_H
 
 #include <ctype.h>
-#include <devices/input.h>
-#include <devices/keymap.h>
 #include <dos/dos.h>
 #include <dos/dosextens.h>
 #include <exec/libraries.h>
 #include <exec/memory.h>
 #include <exec/types.h>
-#include <devices/inputevent.h>
-#include <proto/input.h>
 #include <proto/dos.h>
 #include <proto/exec.h>
 #include <stdio.h>

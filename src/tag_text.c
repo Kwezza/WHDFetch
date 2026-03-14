@@ -677,6 +677,8 @@ BOOL init_text_builder(TextBuilder *tb)
 
 void add_line(TextBuilder *tb, const char *line)
 {
+    char *owned;
+
     if (tb->count >= tb->capacity) {
         int new_cap = tb->capacity * 2;
         char **new_lines = (char **)amiga_malloc(sizeof(char *) * new_cap);
@@ -686,7 +688,16 @@ void add_line(TextBuilder *tb, const char *line)
         tb->lines = new_lines;
         tb->capacity = new_cap;
     }
-    tb->lines[tb->count++] = (char *)line; // cast ok since you're pointing to constant strings
+    /* Duplicate every string so free_text_builder can safely free all entries.
+     * NULL is used as the list terminator and is stored as-is. */
+    if (line != NULL) {
+        owned = (char *)amiga_malloc(strlen(line) + 1);
+        if (!owned) return;
+        strcpy(owned, line);
+    } else {
+        owned = NULL;
+    }
+    tb->lines[tb->count++] = owned;
 }
 
 void finalize_text_builder(TextBuilder *tb)
@@ -696,24 +707,28 @@ void finalize_text_builder(TextBuilder *tb)
 
 void free_text_builder(TextBuilder *tb)
 {
+    int i;
+    for (i = 0; i < tb->count; i++)
+    {
+        if (tb->lines[i] != NULL)
+            amiga_free(tb->lines[i]);
+    }
     amiga_free(tb->lines);
+    tb->lines = NULL;
+    tb->count = 0;
+    tb->capacity = 0;
 }
 
 BOOL addf_line(TextBuilder *tb, const char *fmt, ...)
 {
     va_list args;
     char buffer[MAX_LINE_LEN];
-    char *copy;
 
     va_start(args, fmt);
     vsprintf(buffer, fmt, args);
     va_end(args);
 
-    copy = (char *)amiga_malloc(strlen(buffer) + 1);
-    if (!copy)
-        return FALSE;
-
-    strcpy(copy, buffer);
-    add_line(tb, copy);
+    /* add_line duplicates the string internally, so pass buffer directly */
+    add_line(tb, buffer);
     return TRUE;
 }

@@ -62,28 +62,15 @@ Future plans:
 #include <exec/memory.h>
 #include <exec/types.h>
 #include <ctype.h>
-#include <devices/input.h>
-#include <devices/keymap.h>
 #include <dos/dos.h>
 #include <dos/dosextens.h>
 #include <exec/libraries.h>
-
-#include <devices/inputevent.h>
-#include <proto/input.h>
 #include <proto/dos.h>
 #include <proto/exec.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <proto/timer.h>     /* For timer.device functions */
-#include <devices/timer.h>   /* For timer.device structures */
-#include <devices/console.h> /* For console.device definitions */
-#include <proto/console.h>   /* For console.device function prototypes */
-
-/* Icon library used for the file version check */
-#include <proto/icon.h>
-#include <workbench/icon.h>
 
 #include "main.h"
 #include "utilities.h"
@@ -92,6 +79,46 @@ Future plans:
 #include "linecounter.h"
 #include "download/amiga_download.h"
 #include "platform/platform.h"
+#include "log/log.h"
+
+#if defined(__AMIGA__)
+/* VBCC stack override: helps avoid late-exit crashes from stack exhaustion. */
+ULONG __stack = 131072;
+#endif
+
+/* Track whether the download library was successfully initialized so that
+ * do_shutdown() only calls ad_cleanup_download_lib() when appropriate. */
+static BOOL g_download_lib_initialized = FALSE;
+
+/*
+ * do_shutdown() - called before every return from main().
+ * Logs each step so we can see exactly how far the shutdown gets before
+ * any crash.  All log writes go directly to disk (immediate write mode).
+ */
+static void do_shutdown(void)
+{
+    log_info(LOG_GENERAL, "do_shutdown: entered\n");
+
+    if (g_download_lib_initialized)
+    {
+        log_info(LOG_GENERAL, "do_shutdown: calling ad_cleanup_download_lib...\n");
+        ad_cleanup_download_lib();
+        g_download_lib_initialized = FALSE;
+        log_info(LOG_GENERAL, "do_shutdown: ad_cleanup_download_lib complete\n");
+    }
+    else
+    {
+        log_info(LOG_GENERAL, "do_shutdown: download lib was not initialized, skipping cleanup\n");
+    }
+
+    log_info(LOG_GENERAL, "do_shutdown: calling amiga_memory_report...\n");
+    amiga_memory_report();
+    log_info(LOG_GENERAL, "do_shutdown: amiga_memory_report complete\n");
+
+    log_info(LOG_GENERAL, "do_shutdown: calling shutdown_log_system - this is the last log entry\n");
+    shutdown_log_system();
+    /* No more logging possible after this point */
+}
 
 #define BUFFER_SIZE 1024
 #define MAX_LINK_LENGTH 256
@@ -204,10 +231,18 @@ int main(int argc, char *argv[])
     char temp_string[1024];       /* Buffer for building command strings */    
     /* Initialize application defaults and structures */
     setup_app_defaults(whdload_pack_defs, download_options);
-    
+
+    /* Start the log system immediately so all shutdown steps are captured */
+    initialize_log_system(TRUE);
+    log_info(LOG_GENERAL, "main: starting up\n");
+
     /* Show startup text and verify required programs */
     if (startup_text_and_needed_progs_are_installed(argc))
+    {
+        log_info(LOG_GENERAL, "main: startup check failed, exiting early\n");
+        do_shutdown();
         return 1;
+    }
 
     /* Set timezone to avoid errors in unzip program */
     ensure_time_zone_set();
@@ -222,6 +257,8 @@ int main(int argc, char *argv[])
         if (strncasecmp_custom(argv[i], "HELP", strlen(argv[i])) == 0)
         {
             startup_text_and_needed_progs_are_installed(0);
+            log_info(LOG_GENERAL, "main: HELP requested, exiting\n");
+            do_shutdown();
             return 0;
         }
         
@@ -290,6 +327,7 @@ int main(int argc, char *argv[])
     delete_all_files_in_dir(DIR_HOLDING);
 
         /* Initialize with tag values */
+        log_info(LOG_GENERAL, "main: calling ad_init_download_lib_taglist...\n");
         if (!ad_init_download_lib_taglist(
                 ADTAG_Verbose, FALSE,             
                 ADTAG_Timeout, 60,               
@@ -299,8 +337,12 @@ int main(int argc, char *argv[])
                 TAG_DONE))
         {
             printf("Failed to initialize download library\n");
+            log_error(LOG_GENERAL, "main: ad_init_download_lib_taglist failed\n");
+            do_shutdown();
             return RETURN_FAIL;
         }
+        g_download_lib_initialized = TRUE;
+        log_info(LOG_GENERAL, "main: download library initialized\n");
 
     /* Download the Retroplay index page */
     printf(textReset textBold "\nGetting latest Retroplay web page from the TURRAN website site...\n" textReset);
@@ -311,16 +353,17 @@ int main(int argc, char *argv[])
 
     if (download_result != AD_SUCCESS)
     {
-
         /* Use the helper function to print a descriptive error message */
         ad_print_download_error(download_result);
-                printf("\nFailed to download the index page. Please check your internet connection, and the address is still valid.\n");
-                printf("Current address: %s\n", DOWNLOAD_WEBSITE);
-                return -1;
+        printf("\nFailed to download the index page. Please check your internet connection, and the address is still valid.\n");
+        printf("Current address: %s\n", DOWNLOAD_WEBSITE);
+        log_error(LOG_GENERAL, "main: index page download failed (result=%ld), exiting\n", (long)download_result);
+        do_shutdown();
+        return -1;
     }
     else
     {
-        printf("File successfully downloaded.             \n", temp_string);
+        printf("File successfully downloaded.             \n");
     }
 
 
@@ -381,6 +424,8 @@ int main(int argc, char *argv[])
     {
         printf("\n\n" textReset textBold "Dats only mode complete!\n");
         printf(textReset textBold "========================" textReset "\n\n");
+        log_info(LOG_GENERAL, "main: dats-only mode complete, beginning shutdown\n");
+        do_shutdown();
         return 0;
     }
     else
@@ -411,6 +456,8 @@ int main(int argc, char *argv[])
     if (cancel_early == 1)
     {
         printf("\n\n" textReset textBold "Process cancelled by user or error detected." textReset "\n");
+        log_info(LOG_GENERAL, "main: cancelled early, beginning shutdown\n");
+        do_shutdown();
         return 1;
     }
 
@@ -441,7 +488,9 @@ int main(int argc, char *argv[])
     /* Show elapsed time and version */
     printf("\nElapsed time: %ld:%02ld:%02ld\n", hours, minutes, seconds);
     printf(textReset textBold " PROGRAM_NAME " textReset ", version " VERSION_STRING "\n\n");
-    
+
+    log_info(LOG_GENERAL, "main: normal completion, beginning shutdown\n");
+    do_shutdown();
     return 0;
 }
 
@@ -745,7 +794,8 @@ int compare_and_decide_DatFileDownload(char *fileName, const char *searchText)
         oldFileDate = convert_string_date_to_int(tempDateStr);
         if (newFileDate > oldFileDate)
         {
-            printf("The server's file is %d days newer than the current one. Downloading now...\n", newFileDate - oldFileDate);
+            printf("The server's file is %ld days newer than the current one. Downloading now...\n",
+                   newFileDate - oldFileDate);
             return 1;
         }
         else
@@ -1738,8 +1788,8 @@ void delete_all_files_in_dir(const char *directory)
     /* Try to lock the directory */
     if (!(directory_lock = Lock(clean_path_buffer, ACCESS_READ)))
     {
-        printf("Failed to lock the directory: %s\n", (ULONG)clean_path_buffer);
-        printf("Error message: (%d) \n", IoErr());
+        printf("Failed to lock the directory: %s\n", clean_path_buffer);
+        printf("Error message: (%ld) \n", (long)IoErr());
         FreeDosObject(DOS_FIB, file_info_block);
         return;
     }
@@ -1747,7 +1797,7 @@ void delete_all_files_in_dir(const char *directory)
     /* Examine the directory */
     if (!Examine(directory_lock, file_info_block))
     {
-        printf("Failed to examine the directory: %s\n", (ULONG)clean_path_buffer);
+        printf("Failed to examine the directory: %s\n", clean_path_buffer);
         UnLock(directory_lock);
         FreeDosObject(DOS_FIB, file_info_block);
         return;
@@ -1767,7 +1817,7 @@ void delete_all_files_in_dir(const char *directory)
             /* Delete the file */
             if (!DeleteFile(filePath))
             {
-                printf("Failed to delete file: %s\n", (ULONG)filePath);
+                printf("Failed to delete file: %s\n", filePath);
             }
         }
         do_more_entries_exist = ExNext(directory_lock, file_info_block);
