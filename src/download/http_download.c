@@ -89,8 +89,6 @@ int ad_download_http_file(const char *url, const char *output_path, BOOL silent)
     BPTR file = 0;            /* Output file handle */
     int result = AD_ERROR;    /* Return value */
 
-display_message(MSG_DEBUG,__FILE__,__LINE__, "Testing debug message\n\n\n");
-
     /* Check if library is initialized */
     if (!ad_get_lib_initialized_status())
     {

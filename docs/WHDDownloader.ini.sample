@@ -1,0 +1,56 @@
+; WHDDownloader configuration sample
+; Copy to PROGDIR:WHDDownloader.ini on your Amiga setup.
+; Any missing key falls back to built-in defaults.
+
+[global]
+download_website=http://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20Packs/
+file_part_to_remove=Commodore%20Amiga%20-%20WHDLoad%20-%20
+html_link_prefix_filter=Commodore%20Amiga
+html_link_content_filter=WHDLoad
+link_cleanup_removals=amp;,%20,CommodoreAmiga-,&amp;,&Unofficial,&Unreleased
+
+[pack.demos_beta]
+enabled=true
+display_name=Demos (Beta & Unofficial)
+download_url=http://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20Packs/Commodore_Amiga_-_WHDLoad_-_Demos_-_Beta_&_Unofficial/
+local_dir=Demos Beta/
+filter_dat=Demos-Beta(
+filter_zip=Demos-Beta
+
+[pack.demos]
+enabled=true
+display_name=Demos
+download_url=http://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20Packs/Commodore_Amiga_-_WHDLoad_-_Demos/
+local_dir=Demos/
+filter_dat=Demos(
+filter_zip=Demos(
+
+[pack.games_beta]
+enabled=true
+display_name=Games (Beta & Unofficial)
+download_url=http://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20Packs/Commodore_Amiga_-_WHDLoad_-_Games_-_Beta_&_Unofficial/
+local_dir=Games Beta/
+filter_dat=Games-Beta
+filter_zip=Games-Beta
+
+[pack.games]
+enabled=true
+display_name=Games
+download_url=http://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20Packs/Commodore_Amiga_-_WHDLoad_-_Games/
+local_dir=Games/
+filter_dat=Games(
+filter_zip=Games(
+
+[pack.magazines]
+enabled=true
+display_name=Magazines
+download_url=http://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20Packs/Commodore_Amiga_-_WHDLoad_-_Magazines/
+local_dir=Magazines/
+filter_dat=Magazines(
+filter_zip=Magazines
+
+[filters]
+skip_aga=false
+skip_cd=false
+skip_ntsc=false
+skip_non_english=false

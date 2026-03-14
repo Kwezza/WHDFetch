@@ -118,3 +118,18 @@ In release builds (`MEMTRACK=0`) all tracking code is compiled out — `amiga_ma
 ## Copilot Instructions
 
 `.github/copilot-instructions.md` contains the full reference for AI-assisted development: API summary, ReAction patterns, coding standards, and a project-start checklist.
+
+## WHDDownloader INI Configuration
+
+WHDDownloader supports optional runtime configuration from `PROGDIR:WHDDownloader.ini`.
+
+- Sample file: `docs/WHDDownloader.ini.sample`
+- Per-key runtime verification checklist: `docs/ini_runtime_test_matrix.md`
+
+Precedence order:
+
+1. Built-in defaults
+2. INI overrides
+3. CLI arguments
+
+When no INI file exists, behavior remains unchanged.

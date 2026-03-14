@@ -17,9 +17,15 @@
 /* Constants */
 #define BUFFER_SIZE 1024
 #define MAX_LINK_LENGTH 256
-#define DOWNLOAD_WEBSITE "http://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20Packs/"
-#define FILE_PART_TO_REMOVE "Commodore%20Amiga%20-%20WHDLoad%20-%20"
 #define CLI_LINES_TO_PAUSE_AT 17
+#define MAX_LINK_CLEANUP_REMOVALS 8
+
+extern const char *DOWNLOAD_WEBSITE;
+extern const char *FILE_PART_TO_REMOVE;
+extern const char *HTML_LINK_PREFIX_FILTER;
+extern const char *HTML_LINK_CONTENT_FILTER;
+extern const char *LINK_CLEANUP_REMOVALS[MAX_LINK_CLEANUP_REMOVALS];
+extern int LINK_CLEANUP_REMOVAL_COUNT;
 
 /* URLs */
 extern const char *WHDLOAD_DOWNLOAD_DEMOS_BETA_AND_UNRELEASED;
@@ -69,6 +75,10 @@ extern int files_downloaded;
 extern int files_skipped;
 extern int no_skip_messages;
 extern int no_wget_output;
+extern int skip_AGA;
+extern int skip_CD;
+extern int skip_NTSC;
+extern int skip_NonEnglish;
 
 extern long start_time;
 
@@ -154,7 +164,7 @@ void Format_text_split_by_Caps(const char *original, char *buffer, size_t buffer
 void get_folder_name_from_character(char *c);
 void remove_all_occurrences(char *src, const char *toRemove);
 void sanitize_amiga_file_path(char *path);
-void setup_app_defaults(whdload_pack_def WHDLoadPackDefs[], download_option downloadOptions);
+void setup_app_defaults(whdload_pack_def WHDLoadPackDefs[], download_option *downloadOptions);
 
 void turn_filename_into_text_with_spaces(const char *filename, char *storage);
 char *get_executable_version(const char *filePath);

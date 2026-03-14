@@ -75,6 +75,7 @@ Future plans:
 #include "main.h"
 #include "utilities.h"
 #include "gamefile_parser.h"
+#include "ini_parser.h"
 #include "tag_text.h"
 #include "linecounter.h"
 #include "download/amiga_download.h"
@@ -89,6 +90,73 @@ ULONG __stack = 131072;
 /* Track whether the download library was successfully initialized so that
  * do_shutdown() only calls ad_cleanup_download_lib() when appropriate. */
 static BOOL g_download_lib_initialized = FALSE;
+
+typedef struct html_scan_stats {
+    ULONG lines_scanned;
+    ULONG href_lines_found;
+    ULONG links_parsed;
+    ULONG prefix_matches;
+    ULONG content_matches;
+    ULONG pack_filter_matches;
+    ULONG pack_requested_matches;
+    ULONG downloads_triggered;
+} html_scan_stats;
+
+static html_scan_stats g_html_scan_stats;
+
+static void log_effective_configuration(const whdload_pack_def *pack_defs,
+                                        const download_option *download_options,
+                                        const char *stage)
+{
+    int i;
+
+    if (pack_defs == NULL || download_options == NULL)
+    {
+        return;
+    }
+
+    log_info(LOG_GENERAL,
+             "config[%s]: website='%s' strip_prefix='%s' prefix_filter='%s' content_filter='%s' cleanup_count=%ld\n",
+             stage,
+             DOWNLOAD_WEBSITE,
+             FILE_PART_TO_REMOVE,
+             HTML_LINK_PREFIX_FILTER,
+             HTML_LINK_CONTENT_FILTER,
+             (long)LINK_CLEANUP_REMOVAL_COUNT);
+
+    for (i = 0; i < LINK_CLEANUP_REMOVAL_COUNT; i++)
+    {
+        if (LINK_CLEANUP_REMOVALS[i] != NULL)
+        {
+            log_info(LOG_GENERAL, "config[%s]: cleanup[%ld]='%s'\n", stage, (long)i, LINK_CLEANUP_REMOVALS[i]);
+        }
+    }
+
+    log_info(LOG_GENERAL,
+             "config[%s]: options dat_only=%ld no_skip=%ld quiet=%ld skip_aga=%ld skip_cd=%ld skip_ntsc=%ld skip_non_english=%ld\n",
+             stage,
+             (long)download_options->get_dats_only,
+             (long)download_options->no_skip_messages,
+             (long)download_options->no_wget_output,
+             (long)skip_AGA,
+             (long)skip_CD,
+             (long)skip_NTSC,
+             (long)skip_NonEnglish);
+
+    for (i = 0; i < 5; i++)
+    {
+        log_info(LOG_GENERAL,
+                 "config[%s]: pack[%ld] name='%s' requested=%ld url='%s' dir='%s' filter_dat='%s' filter_zip='%s'\n",
+                 stage,
+                 (long)i,
+                 pack_defs[i].full_text_name_of_pack,
+                 (long)pack_defs[i].user_requested_download,
+                 pack_defs[i].download_url,
+                 pack_defs[i].extracted_pack_dir,
+                 pack_defs[i].filter_dat_files,
+                 pack_defs[i].filter_zip_files);
+    }
+}
 
 /*
  * do_shutdown() - called before every return from main().
@@ -111,6 +179,9 @@ static void do_shutdown(void)
         log_info(LOG_GENERAL, "do_shutdown: download lib was not initialized, skipping cleanup\n");
     }
 
+    log_info(LOG_GENERAL, "do_shutdown: freeing INI override allocations...\n");
+    ini_parser_cleanup_overrides();
+
     log_info(LOG_GENERAL, "do_shutdown: calling amiga_memory_report...\n");
     amiga_memory_report();
     log_info(LOG_GENERAL, "do_shutdown: amiga_memory_report complete\n");
@@ -122,19 +193,31 @@ static void do_shutdown(void)
 
 #define BUFFER_SIZE 1024
 #define MAX_LINK_LENGTH 256
-#define DOWNLOAD_WEBSITE "http://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20Packs/"
-#define FILE_PART_TO_REMOVE "Commodore%20Amiga%20-%20WHDLoad%20-%20"
 #define CLI_LINES_TO_PAUSE_AT 17
 
-const char *WHDLOAD_DOWNLOAD_DEMOS_BETA_AND_UNRELEASED = "http://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20Packs/Commodore_Amiga_-_WHDLoad_-_Demos_-_Beta_%26_Unreleased/";
+const char *DOWNLOAD_WEBSITE = "http://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20Packs/";
+const char *FILE_PART_TO_REMOVE = "Commodore%20Amiga%20-%20WHDLoad%20-%20";
+const char *HTML_LINK_PREFIX_FILTER = "Commodore%20Amiga";
+const char *HTML_LINK_CONTENT_FILTER = "WHDLoad";
+const char *LINK_CLEANUP_REMOVALS[MAX_LINK_CLEANUP_REMOVALS] = {
+    "amp;",
+    "%20",
+    "CommodoreAmiga-",
+    "&amp;",
+    "&Unofficial",
+    "&Unreleased"
+};
+int LINK_CLEANUP_REMOVAL_COUNT = 6;
+
+const char *WHDLOAD_DOWNLOAD_DEMOS_BETA_AND_UNRELEASED = "http://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20Packs/Commodore_Amiga_-_WHDLoad_-_Demos_-_Beta_&_Unofficial/";
 const char *WHDLOAD_DOWNLOAD_DEMOS = "http://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20Packs/Commodore_Amiga_-_WHDLoad_-_Demos/";
-const char *WHDLOAD_DOWNLOAD_GAMES_BETA_AND_UNRELEASED = "http://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20Packs/Commodore_Amiga_-_WHDLoad_-_Games_-_Beta_%26_Unreleased/";
+const char *WHDLOAD_DOWNLOAD_GAMES_BETA_AND_UNRELEASED = "http://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20Packs/Commodore_Amiga_-_WHDLoad_-_Games_-_Beta_&_Unofficial/";
 const char *WHDLOAD_DOWNLOAD_GAMES = "http://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20Packs/Commodore_Amiga_-_WHDLoad_-_Games/";
 const char *WHDLOAD_DOWNLOAD_MAGAZINES = "http://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20Packs/Commodore_Amiga_-_WHDLoad_-_Magazines/";
 
-const char *WHDLOAD_TEXT_NAME_DEMOS_BETA_AND_UNRELEASED = "Demos (Beta & Unreleased)";
+const char *WHDLOAD_TEXT_NAME_DEMOS_BETA_AND_UNRELEASED = "Demos (Beta & Unofficial)";
 const char *WHDLOAD_TEXT_NAME_DEMOS = "Demos";
-const char *WHDLOAD_TEXT_NAME_GAMES_BETA_AND_UNRELEASED = "Games (Beta & Unreleased)";
+const char *WHDLOAD_TEXT_NAME_GAMES_BETA_AND_UNRELEASED = "Games (Beta & Unofficial)";
 const char *WHDLOAD_TEXT_NAME_GAMES = "Games";
 const char *WHDLOAD_TEXT_NAME_MAGAZINES = "Magazines";
 
@@ -228,13 +311,25 @@ int main(int argc, char *argv[])
     long hours, minutes, seconds; /* Components of elapsed time */
     long response_code;           /* Return code from download operations */
     int download_result;          /* Result of download operations */
+    int requested_pack_count = 0; /* Number of packs selected by CLI/defaults */
     char temp_string[1024];       /* Buffer for building command strings */    
     /* Initialize application defaults and structures */
-    setup_app_defaults(whdload_pack_defs, download_options);
+    setup_app_defaults(whdload_pack_defs, &download_options);
 
     /* Start the log system immediately so all shutdown steps are captured */
     initialize_log_system(TRUE);
     log_info(LOG_GENERAL, "main: starting up\n");
+
+    if (ini_parser_load_overrides(whdload_pack_defs, &download_options))
+    {
+        log_info(LOG_GENERAL, "main: ini overrides loaded\n");
+    }
+    else
+    {
+        log_debug(LOG_GENERAL, "main: ini not found, defaults remain active\n");
+    }
+
+    log_effective_configuration(whdload_pack_defs, &download_options, "after-ini");
 
     /* Show startup text and verify required programs */
     if (startup_text_and_needed_progs_are_installed(argc))
@@ -316,12 +411,49 @@ int main(int argc, char *argv[])
         }
     }
 
+    for (i = 0; i < 5; i++)
+    {
+        if (whdload_pack_defs[i].user_requested_download == 1)
+        {
+            requested_pack_count++;
+        }
+    }
+
+    if (download_options.get_dats_only == 1 && requested_pack_count == 0)
+    {
+        /* Keep legacy CLI simple: DAT-only with no pack flags means all DAT packs. */
+        whdload_pack_defs[GAMES].user_requested_download = 1;
+        whdload_pack_defs[GAMES_BETA].user_requested_download = 1;
+        whdload_pack_defs[DEMOS].user_requested_download = 1;
+        whdload_pack_defs[DEMOS_BETA].user_requested_download = 1;
+        whdload_pack_defs[MAGAZINES].user_requested_download = 1;
+        requested_pack_count = 5;
+        log_info(LOG_GENERAL, "main: dats-only mode with no explicit pack flags, defaulting to all packs\n");
+    }
+
+    if (requested_pack_count == 0)
+    {
+        log_warning(LOG_GENERAL, "main: no packs selected; links may be detected but none will be downloaded\n");
+    }
+    else
+    {
+        log_info(LOG_GENERAL, "main: selected packs=%ld\n", (long)requested_pack_count);
+    }
+
+    log_effective_configuration(whdload_pack_defs, &download_options, "after-cli");
+
     /* Create required directories */
-    create_Directory_and_unlock(DIR_TEMP);
-    create_Directory_and_unlock(DIR_ZIP_FILES);
-    create_Directory_and_unlock(DIR_DAT_FILES);
-    create_Directory_and_unlock(DIR_HOLDING);
-    create_Directory_and_unlock(DIR_GAME_DOWNLOADS);
+    if (!create_Directory_and_unlock(DIR_TEMP) ||
+        !create_Directory_and_unlock(DIR_ZIP_FILES) ||
+        !create_Directory_and_unlock(DIR_DAT_FILES) ||
+        !create_Directory_and_unlock(DIR_HOLDING) ||
+        !create_Directory_and_unlock(DIR_GAME_DOWNLOADS))
+    {
+        printf("Failed to create one or more required directories. See general log for details.\n");
+        log_error(LOG_GENERAL, "main: required directory creation failed, exiting\n");
+        do_shutdown();
+        return RETURN_FAIL;
+    }
 
     /* Clean holding directory if program is run again */
     delete_all_files_in_dir(DIR_HOLDING);
@@ -567,9 +699,9 @@ BOOL startup_text_and_needed_progs_are_installed(int number_of_args)
             add_line(&tb, "");
             add_line(&tb, "<b>Commands (choose one or more):</b>");
             add_line(&tb, "  DOWNLOADGAMES/S<ex23>Download games");
-            add_line(&tb, "  DOWNLOADBETAGAMES/S<ex23>Download beta and unreleased games");
+            add_line(&tb, "  DOWNLOADBETAGAMES/S<ex23>Download beta and unofficial games");
             add_line(&tb, "  DOWNLOADDEMOS/S<ex23>Download demos");
-            add_line(&tb, "  DOWNLOADBETADEMOS/S<ex23>Download beta and unreleased demos");
+            add_line(&tb, "  DOWNLOADBETADEMOS/S<ex23>Download beta and unofficial demos");
             add_line(&tb, "  DOWNLOADMAGS/S<ex23>Download magazines");
             add_line(&tb, "  DOWNLOADALL/S<ex23>Download all packs");
             add_line(&tb, "");
@@ -613,24 +745,27 @@ BOOL startup_text_and_needed_progs_are_installed(int number_of_args)
     return FALSE;
 }
 
-void setup_app_defaults(struct whdload_pack_def WHDLoadPackDefs[], struct download_option downloadOptions)
+void setup_app_defaults(struct whdload_pack_def WHDLoadPackDefs[], struct download_option *downloadOptions)
 {
-    downloadOptions.download_games = 0;
-    downloadOptions.download_games_beta = 0;
-    downloadOptions.download_demos = 0;
-    downloadOptions.download_demos_beta = 0;
-    downloadOptions.download_magazines = 0;
-    downloadOptions.download_all = 0;
-    downloadOptions.get_dats_only = 0;
-    downloadOptions.no_skip_messages = 0;
-    downloadOptions.no_wget_output = 0;
+    if (downloadOptions != NULL)
+    {
+        downloadOptions->download_games = 0;
+        downloadOptions->download_games_beta = 0;
+        downloadOptions->download_demos = 0;
+        downloadOptions->download_demos_beta = 0;
+        downloadOptions->download_magazines = 0;
+        downloadOptions->download_all = 0;
+        downloadOptions->get_dats_only = 0;
+        downloadOptions->no_skip_messages = 0;
+        downloadOptions->no_wget_output = 0;
+    }
 
     WHDLoadPackDefs[DEMOS_BETA].count_existing_files_skipped = 0;
     WHDLoadPackDefs[DEMOS_BETA].count_new_files_downloaded = 0;
     WHDLoadPackDefs[DEMOS_BETA].download_url = WHDLOAD_DOWNLOAD_DEMOS_BETA_AND_UNRELEASED;
     WHDLoadPackDefs[DEMOS_BETA].extracted_pack_dir = WHDLOAD_DIR_DEMOS_BETA_AND_UNRELEASED;
     WHDLoadPackDefs[DEMOS_BETA].filter_dat_files = WHDLOAD_FILE_FILTER_DAT_BETA_AND_UNRELEASED;
-    WHDLoadPackDefs[DEMOS_BETA].filter_dat_files = WHDLOAD_FILE_FILTER_ZIP_BETA_AND_UNRELEASED;
+    WHDLoadPackDefs[DEMOS_BETA].filter_zip_files = WHDLOAD_FILE_FILTER_ZIP_BETA_AND_UNRELEASED;
     WHDLoadPackDefs[DEMOS_BETA].full_text_name_of_pack = WHDLOAD_TEXT_NAME_DEMOS_BETA_AND_UNRELEASED;
     WHDLoadPackDefs[DEMOS_BETA].updated_dat_downloaded = 0;
     WHDLoadPackDefs[DEMOS_BETA].user_requested_download = 0;
@@ -641,7 +776,7 @@ void setup_app_defaults(struct whdload_pack_def WHDLoadPackDefs[], struct downlo
     WHDLoadPackDefs[DEMOS].download_url = WHDLOAD_DOWNLOAD_DEMOS;
     WHDLoadPackDefs[DEMOS].extracted_pack_dir = WHDLOAD_DIR_DEMOS;
     WHDLoadPackDefs[DEMOS].filter_dat_files = WHDLOAD_FILE_FILTER_DAT_DEMOS;
-    WHDLoadPackDefs[DEMOS].filter_dat_files = WHDLOAD_FILE_FILTER_ZIP_DEMOS;
+    WHDLoadPackDefs[DEMOS].filter_zip_files = WHDLOAD_FILE_FILTER_ZIP_DEMOS;
     WHDLoadPackDefs[DEMOS].full_text_name_of_pack = WHDLOAD_TEXT_NAME_DEMOS;
     WHDLoadPackDefs[DEMOS].updated_dat_downloaded = 0;
     WHDLoadPackDefs[DEMOS].user_requested_download = 0;
@@ -652,7 +787,7 @@ void setup_app_defaults(struct whdload_pack_def WHDLoadPackDefs[], struct downlo
     WHDLoadPackDefs[GAMES_BETA].download_url = WHDLOAD_DOWNLOAD_GAMES_BETA_AND_UNRELEASED;
     WHDLoadPackDefs[GAMES_BETA].extracted_pack_dir = WHDLOAD_DIR_GAMES_BETA_AND_UNRELEASED;
     WHDLoadPackDefs[GAMES_BETA].filter_dat_files = WHDLOAD_FILE_FILTER_DAT_GAMES_BETA_AND_UNRELEASED;
-    WHDLoadPackDefs[GAMES_BETA].filter_dat_files = WHDLOAD_FILE_FILTER_ZIP_GAMES_BETA_AND_UNRELEASED;
+    WHDLoadPackDefs[GAMES_BETA].filter_zip_files = WHDLOAD_FILE_FILTER_ZIP_GAMES_BETA_AND_UNRELEASED;
     WHDLoadPackDefs[GAMES_BETA].full_text_name_of_pack = WHDLOAD_TEXT_NAME_GAMES_BETA_AND_UNRELEASED;
     WHDLoadPackDefs[GAMES_BETA].updated_dat_downloaded = 0;
     WHDLoadPackDefs[GAMES_BETA].user_requested_download = 0;
@@ -663,7 +798,7 @@ void setup_app_defaults(struct whdload_pack_def WHDLoadPackDefs[], struct downlo
     WHDLoadPackDefs[GAMES].download_url = WHDLOAD_DOWNLOAD_GAMES;
     WHDLoadPackDefs[GAMES].extracted_pack_dir = WHDLOAD_DIR_GAMES;
     WHDLoadPackDefs[GAMES].filter_dat_files = WHDLOAD_FILE_FILTER_DAT_GAMES;
-    WHDLoadPackDefs[GAMES].filter_dat_files = WHDLOAD_FILE_FILTER_ZIP_GAMES;
+    WHDLoadPackDefs[GAMES].filter_zip_files = WHDLOAD_FILE_FILTER_ZIP_GAMES;
     WHDLoadPackDefs[GAMES].full_text_name_of_pack = WHDLOAD_TEXT_NAME_GAMES;
     WHDLoadPackDefs[GAMES].updated_dat_downloaded = 0;
     WHDLoadPackDefs[GAMES].user_requested_download = 0;
@@ -674,7 +809,7 @@ void setup_app_defaults(struct whdload_pack_def WHDLoadPackDefs[], struct downlo
     WHDLoadPackDefs[MAGAZINES].download_url = WHDLOAD_DOWNLOAD_MAGAZINES;
     WHDLoadPackDefs[MAGAZINES].extracted_pack_dir = WHDLOAD_DIR_MAGAZINES;
     WHDLoadPackDefs[MAGAZINES].filter_dat_files = WHDLOAD_FILE_FILTER_DAT_MAGAZINES;
-    WHDLoadPackDefs[MAGAZINES].filter_dat_files = WHDLOAD_FILE_FILTER_ZIP_MAGAZINES;
+    WHDLoadPackDefs[MAGAZINES].filter_zip_files = WHDLOAD_FILE_FILTER_ZIP_MAGAZINES;
     WHDLoadPackDefs[MAGAZINES].full_text_name_of_pack = WHDLOAD_TEXT_NAME_MAGAZINES;
     WHDLoadPackDefs[MAGAZINES].updated_dat_downloaded = 0;
     WHDLoadPackDefs[MAGAZINES].user_requested_download = 0;
@@ -691,27 +826,60 @@ void extract_and_validate_HTML_links(struct whdload_pack_def WHDLoadPackDefs[], 
     if (file == NULL)
     {
         printf("Error opening file.\n");
+        log_error(LOG_GENERAL, "html: failed to open %s\n", file_path_to_html_file);
         return;
     }
+
+    memset(&g_html_scan_stats, 0, sizeof(g_html_scan_stats));
+    log_info(LOG_GENERAL, "html: scanning %s\n", file_path_to_html_file);
+    log_info(LOG_GENERAL,
+             "html: active filters prefix='%s' content='%s' remove_prefix='%s' cleanup_rules=%ld\n",
+             (HTML_LINK_PREFIX_FILTER ? HTML_LINK_PREFIX_FILTER : "<null>"),
+             (HTML_LINK_CONTENT_FILTER ? HTML_LINK_CONTENT_FILTER : "<null>"),
+             (FILE_PART_TO_REMOVE ? FILE_PART_TO_REMOVE : "<null>"),
+             (long)LINK_CLEANUP_REMOVAL_COUNT);
 
     /* Read the file line by line */
     while (fgets(buffer, BUFFER_SIZE, file) != NULL)
     {
+        g_html_scan_stats.lines_scanned++;
+        if (strstr(buffer, "<a href=\"") == NULL)
+        {
+            continue;
+        }
+
+        g_html_scan_stats.href_lines_found++;
         /* Extract links and check them */
         download_WHDLoadPacks_From_Links(buffer, WHDLoadPackDefs, 5);
     }
 
     fclose(file);
+
+    log_info(LOG_GENERAL,
+             "html: scan summary lines=%lu href_lines=%lu parsed_links=%lu prefix_match=%lu content_match=%lu pack_match=%lu requested_pack_match=%lu downloads_triggered=%lu\n",
+             g_html_scan_stats.lines_scanned,
+             g_html_scan_stats.href_lines_found,
+             g_html_scan_stats.links_parsed,
+             g_html_scan_stats.prefix_matches,
+             g_html_scan_stats.content_matches,
+             g_html_scan_stats.pack_filter_matches,
+             g_html_scan_stats.pack_requested_matches,
+             g_html_scan_stats.downloads_triggered);
+
+    if (g_html_scan_stats.pack_requested_matches == 0)
+    {
+        log_warning(LOG_GENERAL, "html: no requested pack links matched. Check selected pack flags and filter strings.\n");
+    }
 }
 
 int download_WHDLoadPacks_From_Links(const char *bufferm, struct whdload_pack_def WHDLoadPackDefs[], int size_WHDLoadPackDef)
 {
     char *startPos;
-    char pattern[20] = "Commodore%20Amiga";
     char link[MAX_LINK_LENGTH];
     char downloadCommand[2024];
     char fileName[128] = {0};
     int downloadFile = 0, i;
+    int any_pack_match = 0;
     int download_result;          /* Result of download operations */
     //char temp_string[1024];       /* Buffer for building command strings */   
     char file_path_to_save[256];
@@ -729,22 +897,40 @@ int download_WHDLoadPacks_From_Links(const char *bufferm, struct whdload_pack_de
             {
                 strncpy(link, startPos + 9, linkLength);
                 link[linkLength] = '\0'; /* Ensure the string is null-terminated */
+                g_html_scan_stats.links_parsed++;
+                log_debug(LOG_GENERAL, "html: found href link='%s'\n", link);
                 // printf("Link: %s\n", link);
 
                 /* Check if the link matches the pattern */
-                if (strstr(link, pattern) != NULL)
+                if (HTML_LINK_PREFIX_FILTER != NULL && strstr(link, HTML_LINK_PREFIX_FILTER) != NULL)
                 {
-                    if (strstr(link, "WHDLoad")) /* make sure its a WHDLoad archive*/
+                    g_html_scan_stats.prefix_matches++;
+                    if (HTML_LINK_CONTENT_FILTER != NULL && strstr(link, HTML_LINK_CONTENT_FILTER)) /* make sure its a WHDLoad archive*/
                     {
+                        int cleanup_index;
+                        char date_buf[11] = {0};
+
+                        g_html_scan_stats.content_matches++;
 
                         remove_all_occurrences(link, "amp;"); /* system has problems with the & symbol*/
                         strncpy(fileName, link, sizeof(fileName));
                         remove_all_occurrences(fileName, FILE_PART_TO_REMOVE);
-                        remove_all_occurrences(fileName, "%20");
-                        remove_all_occurrences(fileName, "CommodoreAmiga-");
 
-                        remove_all_occurrences(fileName, "&amp;");
-                        remove_all_occurrences(fileName, "&Unreleased");
+                        for (cleanup_index = 0; cleanup_index < LINK_CLEANUP_REMOVAL_COUNT; cleanup_index++)
+                        {
+                            if (LINK_CLEANUP_REMOVALS[cleanup_index] != NULL && LINK_CLEANUP_REMOVALS[cleanup_index][0] != '\0')
+                            {
+                                remove_all_occurrences(fileName, LINK_CLEANUP_REMOVALS[cleanup_index]);
+                            }
+                        }
+
+                        if (extract_date_from_filename(fileName, date_buf, sizeof(date_buf)) == 0)
+                        {
+                            strncpy(date_buf, "<none>", sizeof(date_buf) - 1);
+                            date_buf[sizeof(date_buf) - 1] = '\0';
+                        }
+
+                        log_debug(LOG_GENERAL, "html: normalized file='%s' date='%s'\n", fileName, date_buf);
                         // printf("File name: %s\n", fileName);
                         downloadFile = 0;
                         for (i = 0; i < 5; i++)
@@ -753,8 +939,19 @@ int download_WHDLoadPacks_From_Links(const char *bufferm, struct whdload_pack_de
 
                             if (strstr(fileName, WHDLoadPackDefs[i].filter_dat_files))
                             {
+                                any_pack_match = 1;
+                                g_html_scan_stats.pack_filter_matches++;
+                                log_info(LOG_GENERAL,
+                                         "html: pack-filter match pack='%s' filter='%s' file='%s' date='%s' requested=%ld\n",
+                                         WHDLoadPackDefs[i].full_text_name_of_pack,
+                                         WHDLoadPackDefs[i].filter_dat_files,
+                                         fileName,
+                                         date_buf,
+                                         (long)WHDLoadPackDefs[i].user_requested_download);
+
                                 if (WHDLoadPackDefs[i].user_requested_download == 1)
                                 {
+                                    g_html_scan_stats.pack_requested_matches++;
                                     printf(textReset textBold "Found %s DAT zip file link.  Downloading..." textReset "\n", WHDLoadPackDefs[i].full_text_name_of_pack);
                                     downloadFile = compare_and_decide_DatFileDownload(fileName, WHDLoadPackDefs[i].filter_dat_files);
                                     WHDLoadPackDefs[i].updated_dat_downloaded = 1;
@@ -762,17 +959,45 @@ int download_WHDLoadPacks_From_Links(const char *bufferm, struct whdload_pack_de
                             }
                         }
 
+                        if (!any_pack_match)
+                        {
+                            log_debug(LOG_GENERAL, "html: no pack filter matched normalized file='%s'\n", fileName);
+                        }
+
                         if (downloadFile == 1)
                         {
                                 sprintf(file_path_to_save, "%s/%s", DIR_ZIP_FILES,fileName);
                                 sprintf(download_address, "%s/%s", DOWNLOAD_WEBSITE,link);
+                                g_html_scan_stats.downloads_triggered++;
+                                log_info(LOG_GENERAL, "html: downloading dat zip from '%s' to '%s'\n", download_address, file_path_to_save);
                                 download_result = ad_download_http_file(download_address, file_path_to_save, TRUE);
+                                log_info(LOG_GENERAL, "html: download result=%ld file='%s'\n", (long)download_result, fileName);
                             //sprintf(downloadCommand, "wget %s -O \"%s/%s\" %s/%s ", silent_wget_command, DIR_ZIP_FILES, fileName, DOWNLOAD_WEBSITE, link);
                             //SystemTagList(downloadCommand, NULL);
                         }
+                        else
+                        {
+                            log_debug(LOG_GENERAL, "html: no download needed for '%s'\n", fileName);
+                        }
+                    }
+                    else
+                    {
+                        log_debug(LOG_GENERAL, "html: skipped (content filter mismatch) link='%s' required='%s'\n", link, HTML_LINK_CONTENT_FILTER);
                     }
                 }
+                else
+                {
+                    log_debug(LOG_GENERAL, "html: skipped (prefix mismatch) link='%s' required='%s'\n", link, HTML_LINK_PREFIX_FILTER);
+                }
             }
+            else
+            {
+                log_debug(LOG_GENERAL, "html: malformed href line, end marker not found\n");
+            }
+        }
+        else
+        {
+            log_debug(LOG_GENERAL, "html: href too long, skipping line\n");
         }
     }
     return 0;
@@ -786,27 +1011,41 @@ int compare_and_decide_DatFileDownload(char *fileName, const char *searchText)
     extract_date_from_filename(fileName, tempDateStr, sizeof(tempDateStr));
     convert_date_to_long_style(tempDateStr, longDate);
     newFileDate = convert_string_date_to_int(tempDateStr);
+    log_info(LOG_GENERAL,
+             "dat-check: remote file='%s' filter='%s' extracted_date='%s' numeric_date=%ld\n",
+             fileName,
+             searchText,
+             tempDateStr,
+             newFileDate);
     printf("File last updated online on %s.\n", longDate);
     Get_latest_filename_from_directory(DIR_ZIP_FILES, searchText, tempFileName);
     if (strlen(tempFileName) > 0)
     {
         extract_date_from_filename(tempFileName, tempDateStr, sizeof(tempDateStr));
         oldFileDate = convert_string_date_to_int(tempDateStr);
+        log_info(LOG_GENERAL,
+                 "dat-check: local file='%s' extracted_date='%s' numeric_date=%ld\n",
+                 tempFileName,
+                 tempDateStr,
+                 oldFileDate);
         if (newFileDate > oldFileDate)
         {
             printf("The server's file is %ld days newer than the current one. Downloading now...\n",
                    newFileDate - oldFileDate);
+            log_info(LOG_GENERAL, "dat-check: remote is newer by %ld days, will download\n", newFileDate - oldFileDate);
             return 1;
         }
         else
         {
             printf("Already downloaded, skipping download.\n");
+            log_info(LOG_GENERAL, "dat-check: local file is up-to-date, skipping download\n");
             return 0;
         }
     }
     else
     {
         printf("Local file not found, downloading now...\n");
+        log_info(LOG_GENERAL, "dat-check: no local file found for filter='%s', will download\n", searchText);
         return 1; /* file not found, download it */
     }
 }
@@ -1516,18 +1755,20 @@ int extract_date_from_filename(const char *filename, char *buffer, int bufSize)
 
 long convert_string_date_to_int(const char *date)
 {
-    char year[5], month[3], day[3];
-    char formattedDate[9];
+    int year, month, day;
 
-    strncpy(day, date, 2);
-    day[2] = '\0';
-    strncpy(month, date + 3, 2);
-    month[2] = '\0';
-    strncpy(year, date + 6, 4);
-    year[4] = '\0';
+    if (date == NULL)
+    {
+        return 0;
+    }
 
-    sprintf(formattedDate, "%s%s%s", year, month, day);
-    return atol(formattedDate);
+    /* Expected input format from extract_date_from_filename(): YYYY-MM-DD */
+    if (sscanf(date, "%d-%d-%d", &year, &month, &day) != 3)
+    {
+        return 0;
+    }
+
+    return (long)(year * 10000 + month * 100 + day);
 }
 
 int compare_dates_greater_then_date2(const char *date1, const char *date2)
@@ -1580,8 +1821,18 @@ void convert_date_to_long_style(const char *date, char *result)
     int day, month, year;
     char daySuffix[5]; // Buffer for the day with ordinal suffix
     const char *monthName;
+
+    if (date == NULL || result == NULL)
+    {
+        return;
+    }
+
     // Parse the date
-    sscanf(date, "%d-%d-%d", &day, &month, &year);
+    if (sscanf(date, "%d-%d-%d", &year, &month, &day) != 3)
+    {
+        strcpy(result, "Unknown date");
+        return;
+    }
 
     // Convert day to ordinal suffix form
     create_day_with_suffix(day, daySuffix);
@@ -1936,24 +2187,65 @@ void sanitize_amiga_file_path(char *path)
 
 BOOL create_Directory_and_unlock(const char *dirName)
 {
+    char path_copy[512];
+    char *slash;
     BPTR lock;
-    if (does_file_or_folder_exist(dirName, 0) == 1)
+
+    if (dirName == NULL || dirName[0] == '\0')
     {
-        // Directory already exists
-        return TRUE;
+        log_error(LOG_GENERAL, "dir: invalid directory name\n");
+        return FALSE;
     }
+
+    /* Create each path component so nested paths work reliably. */
+    strncpy(path_copy, dirName, sizeof(path_copy) - 1);
+    path_copy[sizeof(path_copy) - 1] = '\0';
+
+    slash = strchr(path_copy, '/');
+    while (slash != NULL)
+    {
+        BPTR step_lock;
+
+        *slash = '\0';
+        if (path_copy[0] != '\0' && does_file_or_folder_exist(path_copy, 0) == 0)
+        {
+            step_lock = CreateDir(path_copy);
+            if (step_lock)
+            {
+                UnLock(step_lock);
+                log_info(LOG_GENERAL, "dir: created intermediate '%s'\n", path_copy);
+            }
+            else
+            {
+                LONG err = IoErr();
+                if (err != ERROR_OBJECT_EXISTS)
+                {
+                    log_error(LOG_GENERAL, "dir: failed to create intermediate '%s' (IoErr=%ld)\n", path_copy, (long)err);
+                    return FALSE;
+                }
+                log_debug(LOG_GENERAL, "dir: intermediate already exists '%s'\n", path_copy);
+            }
+        }
+        *slash = '/';
+        slash = strchr(slash + 1, '/');
+    }
+
     lock = CreateDir(dirName);
     if (lock)
     {
-        // Directory was created and now is locked
-        UnLock(lock); // Release the lock
-        // printf("Directory created: %s\n", dirName);
+        UnLock(lock);
+        log_info(LOG_GENERAL, "dir: created '%s'\n", dirName);
         return TRUE;
     }
     else
     {
-        // Directory creation failed
-        // printf("Failed to create directory: %s\n", dirName);
+        LONG err = IoErr();
+        if (err == ERROR_OBJECT_EXISTS)
+        {
+            log_debug(LOG_GENERAL, "dir: already exists '%s'\n", dirName);
+            return TRUE;
+        }
+        log_error(LOG_GENERAL, "dir: failed to create '%s' (IoErr=%ld)\n", dirName, (long)err);
         return FALSE;
     }
 }
