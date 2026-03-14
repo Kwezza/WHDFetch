@@ -89,6 +89,7 @@ endif
 SRCS = \
     $(SRC_DIR)/main.c \
 	$(SRC_DIR)/ini_parser.c \
+	$(SRC_DIR)/icon_unsnapshot.c \
     $(SRC_DIR)/utilities.c \
     $(SRC_DIR)/gamefile_parser.c \
     $(SRC_DIR)/tag_text.c \
@@ -110,6 +111,7 @@ SRCS = \
 OBJS = \
     $(OUT_DIR)/main.o \
 	$(OUT_DIR)/ini_parser.o \
+	$(OUT_DIR)/icon_unsnapshot.o \
     $(OUT_DIR)/utilities.o \
     $(OUT_DIR)/gamefile_parser.o \
     $(OUT_DIR)/tag_text.o \
@@ -152,6 +154,10 @@ $(OUT_DIR)/main.o: $(SRC_DIR)/main.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(OUT_DIR)/ini_parser.o: $(SRC_DIR)/ini_parser.c
+	@echo Compiling: $<
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OUT_DIR)/icon_unsnapshot.o: $(SRC_DIR)/icon_unsnapshot.c
 	@echo Compiling: $<
 	$(CC) $(CFLAGS) -c $< -o $@
 

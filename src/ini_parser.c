@@ -255,6 +255,30 @@ static void apply_global_key_value(const char *key, const char *value, download_
         return;
     }
 
+    if (stricmp_custom(key, "use_custom_icons") == 0)
+    {
+        if (!parse_boolean_value(value, &bool_value))
+        {
+            log_warning(LOG_GENERAL, "ini: invalid boolean value '%s' ignored\n", value);
+            return;
+        }
+
+        download_opts->use_custom_icons = bool_value ? TRUE : FALSE;
+        return;
+    }
+
+    if (stricmp_custom(key, "unsnapshot_icons") == 0)
+    {
+        if (!parse_boolean_value(value, &bool_value))
+        {
+            log_warning(LOG_GENERAL, "ini: invalid boolean value '%s' ignored\n", value);
+            return;
+        }
+
+        download_opts->unsnapshot_icons = bool_value ? TRUE : FALSE;
+        return;
+    }
+
     log_debug(LOG_GENERAL, "ini: unknown [global] key '%s' ignored\n", key);
 }
 

@@ -59,7 +59,10 @@
     };
 
     struct DiskObject* GetDiskObject(const char *name);
+    struct DiskObject* GetDefDiskObject(LONG def_type);
+    BOOL  PutDiskObject(const char *name, struct DiskObject *diskobj);
     void  FreeDiskObject(struct DiskObject *diskobj);
+    BOOL  SetProtection(const char *name, int32_t mask);
     void* AllocVec(uint32_t byteSize, uint32_t requirements);
     void  FreeVec(void *memoryBlock);
     void* Open(const char *name, int32_t accessMode);

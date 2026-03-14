@@ -134,6 +134,8 @@ typedef struct download_option {
     const char *extract_path;
     BOOL delete_archives_after_extract;
     int extract_existing_only;
+    BOOL use_custom_icons;
+    BOOL unsnapshot_icons;
 } download_option;
 
 

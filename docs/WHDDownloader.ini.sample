@@ -32,6 +32,26 @@ extract_path=
 ; When false, keep the archive as a local backup.
 delete_archives_after_extract=true
 
+; When true (default), WHDDownloader looks for matching icons in PROGDIR:Icons/
+; before falling back to the system default drawer icon.
+;
+; Structural folder icons: place A.info, B.info, Games.info, Demos.info, etc.
+; in PROGDIR:Icons/ to customise each category or letter folder.
+;
+; WHDLoad game folder icons: place a file named exactly 'WHD folder.info' in
+; PROGDIR:Icons/ to have it replace the per-game .info sidecar that ships
+; inside every WHDLoad archive. The replacement happens after successful
+; extraction and handles write-protected icons gracefully.
+;
+; Set to false, or pass NOICONS on the CLI, to disable all custom icon handling.
+use_custom_icons=true
+
+; INI-only toggle: when true (default), icons copied from PROGDIR:Icons/
+; are unsnapshotted after copy so saved Workbench positions are removed.
+; This prevents custom template icons from stacking at the same coordinates.
+; Set to false if you want copied icons to keep their saved snapshot position.
+unsnapshot_icons=true
+
 [pack.demos_beta]
 enabled=true
 display_name=Demos (Beta & Unofficial)

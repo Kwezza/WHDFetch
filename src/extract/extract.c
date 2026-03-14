@@ -2,11 +2,223 @@
 #include <string.h>
 
 #include "extract.h"
+#include "icon_unsnapshot.h"
 #include "log/log.h"
 #include "platform/platform.h"
+#include "platform/amiga_headers.h"
 #include "utilities.h"
 
 #define EXTRACT_LISTING_FILE "T:whdd_lha_listing.txt"
+#define EXTRACT_ICONS_DIR    "PROGDIR:Icons"
+
+static void extract_apply_whdload_folder_icon(const char *target_directory,
+                                               const char *game_folder_name,
+                                               const download_option *download_options)
+{
+    char dest_icon_name[EXTRACT_MAX_PATH] = {0};
+    char dest_info_path[EXTRACT_MAX_PATH + 5] = {0};
+    struct DiskObject *diskobj;
+
+    static int template_checked = 0;
+    static BOOL template_exists = FALSE;
+
+    if (target_directory == NULL || game_folder_name == NULL || download_options == NULL)
+        return;
+
+    if (!download_options->use_custom_icons)
+        return;
+
+    /* One-time check: does PROGDIR:Icons/WHD folder.info exist? */
+    if (!template_checked)
+    {
+        struct DiskObject *probe = GetDiskObject("PROGDIR:Icons/WHD folder");
+        if (probe != NULL)
+        {
+            FreeDiskObject(probe);
+            template_exists = TRUE;
+            log_info(LOG_GENERAL, "extract: WHD folder template icon found\n");
+        }
+        else
+        {
+            template_exists = FALSE;
+            log_debug(LOG_GENERAL, "extract: no 'WHD folder.info' in PROGDIR:Icons, game folder icons unchanged\n");
+        }
+        template_checked = 1;
+    }
+
+    if (!template_exists)
+        return;
+
+    /* Build dest paths: target_directory/game_folder_name (no .info) for PutDiskObject,
+       and target_directory/game_folder_name.info for the existence/delete check. */
+    if (snprintf(dest_icon_name, sizeof(dest_icon_name), "%s/%s",
+                 target_directory, game_folder_name) >= (int)sizeof(dest_icon_name))
+    {
+        log_warning(LOG_GENERAL, "extract: WHD folder icon path too long for '%s'\n", game_folder_name);
+        return;
+    }
+    sanitize_amiga_file_path(dest_icon_name);
+
+    if (snprintf(dest_info_path, sizeof(dest_info_path), "%s.info", dest_icon_name)
+            >= (int)sizeof(dest_info_path))
+        return;
+
+    /* If there is an existing icon, clear its protection and delete it */
+    if (does_file_or_folder_exist(dest_info_path, 0))
+    {
+        if (!SetProtection(dest_info_path, 0))
+        {
+            log_warning(LOG_GENERAL,
+                        "extract: SetProtection failed for '%s' (IoErr=%ld), skipping WHD folder icon\n",
+                        dest_info_path, (long)IoErr());
+            return;
+        }
+
+        if (!DeleteFile(dest_info_path))
+        {
+            log_warning(LOG_GENERAL,
+                        "extract: could not delete existing icon '%s' (IoErr=%ld), skipping WHD folder icon\n",
+                        dest_info_path, (long)IoErr());
+            return;
+        }
+    }
+
+    /* Load a fresh copy of the template and write it under the game folder name */
+    diskobj = GetDiskObject("PROGDIR:Icons/WHD folder");
+    if (diskobj == NULL)
+    {
+        log_warning(LOG_GENERAL,
+                    "extract: GetDiskObject('WHD folder') failed unexpectedly (IoErr=%ld)\n",
+                    (long)IoErr());
+        return;
+    }
+
+    if (!PutDiskObject(dest_icon_name, diskobj))
+    {
+        log_warning(LOG_GENERAL,
+                    "extract: PutDiskObject failed for '%s' (IoErr=%ld)\n",
+                    dest_icon_name, (long)IoErr());
+    }
+    else
+    {
+        log_info(LOG_GENERAL, "extract: applied WHD folder icon to '%s'\n", dest_icon_name);
+
+        if (download_options->unsnapshot_icons)
+        {
+            if (!strip_icon_position(dest_icon_name))
+            {
+                log_warning(LOG_GENERAL,
+                            "extract: unsnapshot failed for '%s.info' (IoErr=%ld)\n",
+                            dest_icon_name,
+                            (long)IoErr());
+            }
+        }
+    }
+
+    FreeDiskObject(diskobj);
+}
+
+static void extract_ensure_drawer_icon(const char *dir_path, const download_option *download_options)
+{
+    char info_path[EXTRACT_MAX_PATH] = {0};
+    char custom_source[EXTRACT_MAX_PATH] = {0};
+    const char *leaf_name;
+    struct DiskObject *diskobj;
+    BOOL used_custom_icon = FALSE;
+
+    static int icons_dir_checked = 0;
+    static BOOL icons_dir_exists = FALSE;
+
+    if (dir_path == NULL || download_options == NULL)
+        return;
+
+    /* Check whether the icon already exists - nothing to do */
+    if (snprintf(info_path, sizeof(info_path), "%s.info", dir_path) >= (int)sizeof(info_path))
+        return;
+    sanitize_amiga_file_path(info_path);
+    if (does_file_or_folder_exist(info_path, 0))
+        return;
+
+    /* Extract the leaf name (last path component after '/' or ':', or whole string) */
+    leaf_name = strrchr(dir_path, '/');
+    if (leaf_name != NULL)
+    {
+        leaf_name++;
+    }
+    else
+    {
+        const char *colon = strrchr(dir_path, ':');
+        leaf_name = (colon != NULL) ? colon + 1 : dir_path;
+    }
+
+    if (leaf_name[0] == '\0')
+        return;
+
+    diskobj = NULL;
+
+    /* Try custom icon from PROGDIR:Icons/ if the feature is enabled */
+    if (download_options->use_custom_icons)
+    {
+        if (!icons_dir_checked)
+        {
+            icons_dir_exists = does_file_or_folder_exist(EXTRACT_ICONS_DIR, 0);
+            icons_dir_checked = 1;
+            if (icons_dir_exists)
+                log_info(LOG_GENERAL, "extract: custom icons folder found at '%s'\n", EXTRACT_ICONS_DIR);
+            else
+                log_debug(LOG_GENERAL, "extract: no custom icons folder at '%s', using defaults\n", EXTRACT_ICONS_DIR);
+        }
+
+        if (icons_dir_exists)
+        {
+            if (snprintf(custom_source, sizeof(custom_source), "%s/%s", EXTRACT_ICONS_DIR, leaf_name) < (int)sizeof(custom_source))
+            {
+                sanitize_amiga_file_path(custom_source);
+                diskobj = GetDiskObject(custom_source);
+                if (diskobj != NULL)
+                {
+                    used_custom_icon = TRUE;
+                    log_debug(LOG_GENERAL, "extract: using custom icon '%s.info' for '%s'\n", custom_source, dir_path);
+                }
+            }
+        }
+    }
+
+    /* Fall back to the system default drawer icon */
+    if (diskobj == NULL)
+    {
+        diskobj = GetDefDiskObject(WBDRAWER);
+        if (diskobj == NULL)
+        {
+            log_warning(LOG_GENERAL, "extract: GetDefDiskObject(WBDRAWER) failed for '%s' (IoErr=%ld)\n",
+                        dir_path, (long)IoErr());
+            return;
+        }
+    }
+
+    if (!PutDiskObject(dir_path, diskobj))
+    {
+        log_warning(LOG_GENERAL, "extract: PutDiskObject failed for '%s' (IoErr=%ld)\n",
+                    dir_path, (long)IoErr());
+    }
+    else
+    {
+        log_info(LOG_GENERAL, "extract: created drawer icon for '%s'\n", dir_path);
+
+        if (used_custom_icon && download_options->unsnapshot_icons)
+        {
+            if (!strip_icon_position(dir_path))
+            {
+                log_warning(LOG_GENERAL,
+                            "extract: unsnapshot failed for '%s.info' (IoErr=%ld)\n",
+                            dir_path,
+                            (long)IoErr());
+            }
+        }
+    }
+
+    FreeDiskObject(diskobj);
+}
 
 static BOOL extract_get_parent_directory(const char *archive_path,
                                          char *out_parent_directory,
@@ -289,6 +501,10 @@ BOOL extract_build_target_directory(const char *archive_path,
         {
             return FALSE;
         }
+
+        extract_ensure_drawer_icon(base_path, download_options);
+        extract_ensure_drawer_icon(pack_path, download_options);
+        extract_ensure_drawer_icon(out_target_directory, download_options);
 
         return TRUE;
     }
@@ -674,6 +890,8 @@ LONG extract_process_downloaded_archive(const char *archive_path,
     {
         return extract_result;
     }
+
+    extract_apply_whdload_folder_icon(target_directory, game_folder_name, download_options);
 
     if (!extract_write_archive_metadata(target_directory,
                                         game_folder_name,

@@ -214,7 +214,7 @@ static void log_effective_configuration(const whdload_pack_def *pack_defs,
     }
 
     log_info(LOG_GENERAL,
-             "config[%s]: options dat_only=%ld no_skip=%ld quiet=%ld extract=%ld extract_only=%ld skip_existing=%ld force_extract=%ld skip_download=%ld force_download=%ld extract_path='%s' delete_archives=%ld skip_aga=%ld skip_cd=%ld skip_ntsc=%ld skip_non_english=%ld\n",
+             "config[%s]: options dat_only=%ld no_skip=%ld quiet=%ld extract=%ld extract_only=%ld skip_existing=%ld force_extract=%ld skip_download=%ld force_download=%ld extract_path='%s' delete_archives=%ld skip_aga=%ld skip_cd=%ld skip_ntsc=%ld skip_non_english=%ld use_custom_icons=%ld unsnapshot_icons=%ld\n",
              stage,
              (long)download_options->get_dats_only,
              (long)download_options->no_skip_messages,
@@ -230,7 +230,9 @@ static void log_effective_configuration(const whdload_pack_def *pack_defs,
              (long)skip_AGA,
              (long)skip_CD,
              (long)skip_NTSC,
-             (long)skip_NonEnglish);
+             (long)skip_NonEnglish,
+             (long)download_options->use_custom_icons,
+             (long)download_options->unsnapshot_icons);
 
     for (i = 0; i < 5; i++)
     {
@@ -354,7 +356,7 @@ char silent_wget_command[3] = " ";
                  "LATESTDATONLY/S,NOSKIPREPORT/S,SKIPAGA/S,SKIPCD/S,"                \
                  "SKIPNTSC/S,SKIPNONENGLISH/S,QUIET/S,NOEXTRACT/S,"                  \
                  "EXTRACTTO/K,KEEPARCHIVES/S,DELETEARCHIVES/S,EXTRACTONLY/S,FORCEEXTRACT/S," \
-                 "NODOWNLOADSKIP/S,FORCEDOWNLOAD/S"
+                 "NODOWNLOADSKIP/S,FORCEDOWNLOAD/S,NOICONS/S"
 
 #define textBlack "\x1B[31m"
 #define textBlue "\x1B[33m"
@@ -548,6 +550,11 @@ int main(int argc, char *argv[])
         if (strncasecmp_custom(argv[i], "FORCEDOWNLOAD", strlen(argv[i])) == 0)
         {
             download_options.force_download = TRUE;
+        }
+
+        if (strncasecmp_custom(argv[i], "NOICONS", strlen(argv[i])) == 0)
+        {
+            download_options.use_custom_icons = FALSE;
         }
     }
 
@@ -967,6 +974,8 @@ void setup_app_defaults(struct whdload_pack_def WHDLoadPackDefs[], struct downlo
         downloadOptions->extract_path = NULL;
         downloadOptions->delete_archives_after_extract = TRUE;
         downloadOptions->extract_existing_only = 0;
+        downloadOptions->use_custom_icons = TRUE;
+        downloadOptions->unsnapshot_icons = TRUE;
     }
 
     WHDLoadPackDefs[DEMOS_BETA].count_existing_files_skipped = 0;
