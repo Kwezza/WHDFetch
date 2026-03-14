@@ -1,0 +1,168 @@
+#ifndef MAIN_H
+#define MAIN_H
+
+#include <ctype.h>
+#include <devices/input.h>
+#include <devices/keymap.h>
+#include <dos/dos.h>
+#include <dos/dosextens.h>
+#include <exec/libraries.h>
+#include <exec/memory.h>
+#include <exec/types.h>
+#include <devices/inputevent.h>
+#include <proto/input.h>
+#include <proto/dos.h>
+#include <proto/exec.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+/* Constants */
+#define BUFFER_SIZE 1024
+#define MAX_LINK_LENGTH 256
+#define DOWNLOAD_WEBSITE "http://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20Packs/"
+#define FILE_PART_TO_REMOVE "Commodore%20Amiga%20-%20WHDLoad%20-%20"
+#define CLI_LINES_TO_PAUSE_AT 17
+
+/* URLs */
+extern const char *WHDLOAD_DOWNLOAD_DEMOS_BETA_AND_UNRELEASED;
+extern const char *WHDLOAD_DOWNLOAD_DEMOS;
+extern const char *WHDLOAD_DOWNLOAD_GAMES_BETA_AND_UNRELEASED;
+extern const char *WHDLOAD_DOWNLOAD_GAMES;
+extern const char *WHDLOAD_DOWNLOAD_MAGAZINES;
+
+/* Text Names */
+extern const char *WHDLOAD_TEXT_NAME_DEMOS_BETA_AND_UNRELEASED;
+extern const char *WHDLOAD_TEXT_NAME_DEMOS;
+extern const char *WHDLOAD_TEXT_NAME_GAMES_BETA_AND_UNRELEASED;
+extern const char *WHDLOAD_TEXT_NAME_GAMES;
+extern const char *WHDLOAD_TEXT_NAME_MAGAZINES;
+
+/* Directory Names */
+extern const char *WHDLOAD_DIR_DEMOS_BETA_AND_UNRELEASED;
+extern const char *WHDLOAD_DIR_DEMOS;
+extern const char *WHDLOAD_DIR_GAMES_BETA_AND_UNRELEASED;
+extern const char *WHDLOAD_DIR_GAMES;
+extern const char *WHDLOAD_DIR_MAGAZINES;
+
+/* File Filters */
+extern const char *WHDLOAD_FILE_FILTER_DAT_BETA_AND_UNRELEASED;
+extern const char *WHDLOAD_FILE_FILTER_DAT_DEMOS;
+extern const char *WHDLOAD_FILE_FILTER_DAT_GAMES_BETA_AND_UNRELEASED;
+extern const char *WHDLOAD_FILE_FILTER_DAT_GAMES;
+extern const char *WHDLOAD_FILE_FILTER_DAT_MAGAZINES;
+
+extern const char *WHDLOAD_FILE_FILTER_ZIP_BETA_AND_UNRELEASED;
+extern const char *WHDLOAD_FILE_FILTER_ZIP_DEMOS;
+extern const char *WHDLOAD_FILE_FILTER_ZIP_GAMES_BETA_AND_UNRELEASED;
+extern const char *WHDLOAD_FILE_FILTER_ZIP_GAMES;
+extern const char *WHDLOAD_FILE_FILTER_ZIP_MAGAZINES;
+
+extern const char *GITHUB_ADDRESS;
+
+/* Constants for WHDLoad Pack Definitions */
+extern const int DEMOS_BETA;
+extern const int DEMOS;
+extern const int GAMES_BETA;
+extern const int GAMES;
+extern const int MAGAZINES;
+
+/* Global Variables */
+extern int files_downloaded;
+extern int files_skipped;
+extern int no_skip_messages;
+extern int no_wget_output;
+
+extern long start_time;
+
+extern char silent_wget_command[3];
+
+extern const char *VERSION_STRING;
+extern const char *PROGRAM_NAME;
+extern const char *version;
+
+/* Text Formatting */
+#define textBlack "\x1B[31m"
+#define textBlue "\x1B[33m"
+#define textBold "\x1B[1m"
+#define textGrey "\x1B[30m"
+#define textItalic "\x1B[3m"
+#define textReset "\x1B[0m"
+#define textReverse "\x1B[7m"
+#define textUnderline "\x1B[4m"
+#define textWhite "\x1B[32m"
+
+/* Struct Definitions */
+typedef struct whdload_pack_def {
+    BOOL updated_dat_downloaded;
+    const char *download_url;
+    const char *extracted_pack_dir;
+    const char *fileNameStart;
+    const char *filter_dat_files;
+    const char *filter_zip_files;
+    const char *full_text_name_of_pack;
+    int count_existing_files_skipped;
+    int count_new_files_downloaded;
+    int downloadUpdates;
+    int user_requested_download;
+    int file_count;
+    int filtered_file_count;
+} whdload_pack_def;
+
+typedef struct download_option {
+    int download_all;
+    int download_demos;
+    int download_demos_beta;
+    int download_games;
+    int download_games_beta;
+    int download_magazines;
+    int get_dats_only;
+    int no_skip_messages;
+    int no_wget_output;
+    int extract_whdload_files;
+} download_option;
+
+
+/* Function Prototypes */
+BOOL append_string_to_file(const char *target_filename, const char *append_text, BOOL create_new_file);
+BOOL create_Directory_and_unlock(const char *dirName);
+
+BOOL extract_Zip_file_and_rename(const char *zipPath, whdload_pack_def[], int size_WHDLoadPackDef, int quietMode);
+
+BOOL is_file_locked(const char *filePath);
+
+BOOL process_and_archive_WHDLoadDat_Files(whdload_pack_def WHDLoadPackDefs[], int size_WHDLoadPackDef);
+BOOL startup_text_and_needed_progs_are_installed(int number_of_args);
+char *concatStrings(const char *s1, const char *s2);
+char *get_first_matching_fileName(const char *directory);
+const char *get_month_name(int month);
+int compare_and_decide_DatFileDownload(char *filename, const char *searchText);
+int compare_dates_greater_then_date2(const char *date1, const char *date2);
+int download_WHDLoadPacks_From_Links(const char *bufferm, whdload_pack_def WHDLoadPackDefs[], int size_WHDLoadPackDef);
+int extract_date_from_filename(const char *filename, char *buffer, int bufSize);
+int Get_latest_filename_from_directory(const char *directory, const char *text, char *latestFileName);
+int get_bsdSocket_version(void);
+long convert_string_date_to_int(const char *date);
+LONG download_roms_from_file(const char *filename, whdload_pack_def *WHDLoadPackDefs, int replaceFiles);
+LONG download_roms_if_file_exists(whdload_pack_def *WHDLoadPackDefs, int replaceFiles);
+LONG execute_wget_download_command(const char *downloadWHDFile, whdload_pack_def *WHDLoadPackDefs, int replaceFiles);
+void convert_date_to_long_style(const char *date, char *result);
+void create_day_with_suffix(int day, char *buffer);
+void create_directory_based_on_filename(const char *parentDir, const char *fileName);
+void delete_all_files_in_dir(const char *directory);
+void ensure_time_zone_set(void);
+int extract_and_save_rom_names_from_XML(char *inputFilePath, char *outputFilePath, const char *packName);
+void extract_and_validate_HTML_links(whdload_pack_def WHDLoadPackDefs[], int size_WHDLoadPackDef);
+void Format_text_split_by_Caps(const char *original, char *buffer, size_t buffer_len);
+void get_folder_name_from_character(char *c);
+void remove_all_occurrences(char *src, const char *toRemove);
+void sanitize_amiga_file_path(char *path);
+void setup_app_defaults(whdload_pack_def WHDLoadPackDefs[], download_option downloadOptions);
+
+void turn_filename_into_text_with_spaces(const char *filename, char *storage);
+char *get_executable_version(const char *filePath);
+
+
+
+#endif /* MAIN_H */

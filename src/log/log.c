@@ -51,6 +51,8 @@ static const char* g_categoryNames[] = {
     "general",
     "memory",
     "app",
+    "download",
+    "parser",
     "errors"
 };
 

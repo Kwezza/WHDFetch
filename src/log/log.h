@@ -31,6 +31,8 @@ typedef enum {
     LOG_GENERAL,    /* General program flow                                  */
     LOG_MEMORY,     /* Memory allocations/frees (high-frequency)             */
     LOG_APP,        /* Application-specific - rename/extend as needed        */
+    LOG_DOWNLOAD,   /* HTTP download operations                              */
+    LOG_PARSER,     /* DAT file / HTML parsing                               */
     LOG_ERRORS,     /* Errors only (also auto-copied from other categories)   */
     LOG_CATEGORY_COUNT  /* Keep last - used for array sizing                 */
 } LogCategory;
