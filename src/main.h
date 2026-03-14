@@ -126,7 +126,14 @@ typedef struct download_option {
     int get_dats_only;
     int no_skip_messages;
     int no_wget_output;
-    int extract_whdload_files;
+    BOOL extract_archives;
+    BOOL skip_existing_extractions;
+    BOOL force_extract;
+    BOOL skip_download_if_extracted;
+    BOOL force_download;
+    const char *extract_path;
+    BOOL delete_archives_after_extract;
+    int extract_existing_only;
 } download_option;
 
 
@@ -150,9 +157,22 @@ int extract_date_from_filename(const char *filename, char *buffer, int bufSize);
 int Get_latest_filename_from_directory(const char *directory, const char *text, char *latestFileName);
 int get_bsdSocket_version(void);
 long convert_string_date_to_int(const char *date);
-LONG download_roms_from_file(const char *filename, whdload_pack_def *WHDLoadPackDefs, int replaceFiles);
-LONG download_roms_if_file_exists(whdload_pack_def *WHDLoadPackDefs, int replaceFiles);
-LONG execute_wget_download_command(const char *downloadWHDFile, whdload_pack_def *WHDLoadPackDefs, int replaceFiles);
+LONG download_roms_from_file(const char *filename,
+                             whdload_pack_def *WHDLoadPackDefs,
+                             const download_option *download_options,
+                             int replaceFiles);
+LONG download_roms_if_file_exists(whdload_pack_def *WHDLoadPackDefs,
+                                  const download_option *download_options,
+                                  int replaceFiles);
+LONG execute_wget_download_command(const char *downloadWHDFile,
+                                   whdload_pack_def *WHDLoadPackDefs,
+                                   const download_option *download_options,
+                                   int replaceFiles);
+LONG extract_existing_archives_from_file(const char *filename,
+                                         whdload_pack_def *WHDLoadPackDefs,
+                                         const download_option *download_options);
+LONG extract_existing_archives_if_file_exists(whdload_pack_def *WHDLoadPackDefs,
+                                              const download_option *download_options);
 void convert_date_to_long_style(const char *date, char *result);
 void create_day_with_suffix(int day, char *buffer);
 void create_directory_based_on_filename(const char *parentDir, const char *fileName);

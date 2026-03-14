@@ -9,6 +9,29 @@ html_link_prefix_filter=Commodore%20Amiga
 html_link_content_filter=WHDLoad
 link_cleanup_removals=amp;,%20,CommodoreAmiga-,&amp;,&Unofficial,&Unreleased
 
+; Enable or disable post-download extraction (true/false)
+extract_archives=true
+
+; When true, skip extraction if ArchiveName.txt line 2 exactly matches
+; the archive filename for the resolved target folder.
+skip_existing_extractions=true
+
+; When true, skip downloading if an existing extracted folder marker
+; (ArchiveName.txt line 2) exactly matches the archive filename.
+skip_download_if_extracted=true
+
+; When true, always download archives even if skip_download_if_extracted
+; would otherwise skip them.
+force_download=false
+
+; Empty = in-place extraction beside downloaded archives.
+; Set to a path like Games: or FUN: to extract elsewhere.
+extract_path=
+
+; When true, delete the archive after successful extraction.
+; When false, keep the archive as a local backup.
+delete_archives_after_extract=true
+
 [pack.demos_beta]
 enabled=true
 display_name=Demos (Beta & Unofficial)

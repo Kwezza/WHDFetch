@@ -133,3 +133,48 @@ Precedence order:
 3. CLI arguments
 
 When no INI file exists, behavior remains unchanged.
+
+## WHDDownloader Extraction (Phases 1-5)
+
+Post-download extraction is now integrated into WHDDownloader.
+
+CLI options:
+
+- `NOEXTRACT` - disable extraction and keep download-only behavior
+- `EXTRACTTO=<path>` - extract to another volume/path while preserving pack and letter layout
+- `KEEPARCHIVES` - keep `.lha` files after successful extraction
+- `DELETEARCHIVES` - delete `.lha` files after successful extraction
+- `EXTRACTONLY` - extract archives that already exist in `GameFiles/` without downloading new files
+- `FORCEEXTRACT` - always extract even when existing `ArchiveName.txt` matches
+- `FORCEDOWNLOAD` - always download even when an extracted marker match exists
+
+INI keys (`[global]`):
+
+- `extract_archives=true|false`
+- `skip_existing_extractions=true|false`
+- `skip_download_if_extracted=true|false`
+- `force_download=true|false`
+- `extract_path=` (empty means in-place extraction)
+- `delete_archives_after_extract=true|false`
+
+Default extraction skip behavior:
+
+- Skip-check is on by default.
+- Pre-download skip-check is also on by default.
+- Before extraction, WHDDownloader checks `<target>/<derived folder>/ArchiveName.txt`.
+- Before download, WHDDownloader also checks for any matching `ArchiveName.txt` marker in the target pack/letter folder.
+- If line 2 is an exact case-sensitive match for the incoming archive filename, extraction is skipped.
+- Use `FORCEEXTRACT` to bypass this check.
+- Use `FORCEDOWNLOAD` to bypass pre-download skip.
+
+Current validation behavior:
+
+- If extraction is enabled and `c:lha` is missing, startup fails.
+- If `extract_path` is set but missing or not writable, startup fails.
+- Use `NOEXTRACT` to run download-only mode without extraction prerequisites.
+
+Current implementation note:
+
+- Archive deletion default currently follows `delete_archives_after_extract=true` unless overridden by CLI/INI.
+- The planned automatic default flip for `EXTRACTTO` mode is tracked for a later phase.
+- In normal download mode, extraction runs only after a successful new download. Use `EXTRACTONLY` to process existing archives.

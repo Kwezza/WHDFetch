@@ -79,6 +79,7 @@ Future plans:
 #include "tag_text.h"
 #include "linecounter.h"
 #include "download/amiga_download.h"
+#include "extract/extract.h"
 #include "platform/platform.h"
 #include "log/log.h"
 
@@ -103,6 +104,86 @@ typedef struct html_scan_stats {
 } html_scan_stats;
 
 static html_scan_stats g_html_scan_stats;
+
+static BOOL can_write_to_extract_path(const char *extract_path)
+{
+    FILE *probe_file;
+    char probe_file_path[512] = {0};
+    size_t path_len;
+
+    if (extract_path == NULL || extract_path[0] == '\0')
+    {
+        return TRUE;
+    }
+
+    path_len = strlen(extract_path);
+    if (path_len + strlen("/.whddl_write_test.tmp") + 1 > sizeof(probe_file_path))
+    {
+        log_error(LOG_GENERAL, "extract: extract path too long for probe: '%s'\n", extract_path);
+        return FALSE;
+    }
+
+    sprintf(probe_file_path, "%s/.whddl_write_test.tmp", extract_path);
+    sanitize_amiga_file_path(probe_file_path);
+
+    DeleteFile(probe_file_path);
+    probe_file = fopen(probe_file_path, "w");
+    if (probe_file == NULL)
+    {
+        log_error(LOG_GENERAL, "extract: failed write probe for extract path '%s'\n", extract_path);
+        return FALSE;
+    }
+
+    fputs("ok", probe_file);
+    fclose(probe_file);
+    DeleteFile(probe_file_path);
+    return TRUE;
+}
+
+static BOOL validate_extraction_startup_configuration(const download_option *download_options)
+{
+    if (download_options == NULL)
+    {
+        return FALSE;
+    }
+
+    if (download_options->extract_archives == FALSE)
+    {
+        log_info(LOG_GENERAL, "extract: startup validation skipped because extraction is disabled\n");
+        return TRUE;
+    }
+
+    if (!does_file_or_folder_exist("c:lha", 0))
+    {
+        printf("Extraction is enabled, but c:lha is missing. Install lha or use NOEXTRACT.\n");
+        log_error(LOG_GENERAL, "extract: startup validation failed because c:lha is missing\n");
+        return FALSE;
+    }
+
+    if (download_options->extract_path != NULL && download_options->extract_path[0] != '\0')
+    {
+        if (!does_file_or_folder_exist(download_options->extract_path, 0))
+        {
+            printf("Extraction target '%s' does not exist.\n", download_options->extract_path);
+            log_error(LOG_GENERAL,
+                      "extract: startup validation failed because extract target does not exist: '%s'\n",
+                      download_options->extract_path);
+            return FALSE;
+        }
+
+        if (!can_write_to_extract_path(download_options->extract_path))
+        {
+            printf("Extraction target '%s' is not writable.\n", download_options->extract_path);
+            log_error(LOG_GENERAL,
+                      "extract: startup validation failed because extract target is not writable: '%s'\n",
+                      download_options->extract_path);
+            return FALSE;
+        }
+    }
+
+    log_info(LOG_GENERAL, "extract: startup validation complete\n");
+    return TRUE;
+}
 
 static void log_effective_configuration(const whdload_pack_def *pack_defs,
                                         const download_option *download_options,
@@ -133,11 +214,19 @@ static void log_effective_configuration(const whdload_pack_def *pack_defs,
     }
 
     log_info(LOG_GENERAL,
-             "config[%s]: options dat_only=%ld no_skip=%ld quiet=%ld skip_aga=%ld skip_cd=%ld skip_ntsc=%ld skip_non_english=%ld\n",
+             "config[%s]: options dat_only=%ld no_skip=%ld quiet=%ld extract=%ld extract_only=%ld skip_existing=%ld force_extract=%ld skip_download=%ld force_download=%ld extract_path='%s' delete_archives=%ld skip_aga=%ld skip_cd=%ld skip_ntsc=%ld skip_non_english=%ld\n",
              stage,
              (long)download_options->get_dats_only,
              (long)download_options->no_skip_messages,
              (long)download_options->no_wget_output,
+             (long)download_options->extract_archives,
+             (long)download_options->extract_existing_only,
+             (long)download_options->skip_existing_extractions,
+             (long)download_options->force_extract,
+             (long)download_options->skip_download_if_extracted,
+             (long)download_options->force_download,
+             (download_options->extract_path != NULL) ? download_options->extract_path : "",
+             (long)download_options->delete_archives_after_extract,
              (long)skip_AGA,
              (long)skip_CD,
              (long)skip_NTSC,
@@ -263,7 +352,9 @@ char silent_wget_command[3] = " ";
 #define TEMPLATE "HELP/S,DOWNLOADGAMES/S,DOWNLOADBETAGAMES/S,"                       \
                  "DOWNLOADDEMOS/S,DOWNLOADBETADEMOS/S,DOWNLOADMAGS/S,DOWNLOADALL/S," \
                  "LATESTDATONLY/S,NOSKIPREPORT/S,SKIPAGA/S,SKIPCD/S,"                \
-                 "SKIPNTSC/S,SKIPNONENGLISH/S,QUIET/S"
+                 "SKIPNTSC/S,SKIPNONENGLISH/S,QUIET/S,NOEXTRACT/S,"                  \
+                 "EXTRACTTO/K,KEEPARCHIVES/S,DELETEARCHIVES/S,EXTRACTONLY/S,FORCEEXTRACT/S," \
+                 "NODOWNLOADSKIP/S,FORCEDOWNLOAD/S"
 
 #define textBlack "\x1B[31m"
 #define textBlue "\x1B[33m"
@@ -409,6 +500,62 @@ int main(int argc, char *argv[])
             download_options.no_wget_output = 1;
             strcpy(silent_wget_command, "-q");
         }
+
+        if (strncasecmp_custom(argv[i], "NOEXTRACT", strlen(argv[i])) == 0)
+        {
+            download_options.extract_archives = FALSE;
+        }
+
+        if (strncasecmp_custom(argv[i], "EXTRACTTO=", 10) == 0)
+        {
+            const char *extract_target = argv[i] + 10;
+            if (extract_target[0] == '\0')
+            {
+                download_options.extract_path = NULL;
+            }
+            else
+            {
+                download_options.extract_path = extract_target;
+            }
+        }
+
+        if (strncasecmp_custom(argv[i], "KEEPARCHIVES", strlen(argv[i])) == 0)
+        {
+            download_options.delete_archives_after_extract = FALSE;
+        }
+
+        if (strncasecmp_custom(argv[i], "DELETEARCHIVES", strlen(argv[i])) == 0)
+        {
+            download_options.delete_archives_after_extract = TRUE;
+        }
+
+        if (strncasecmp_custom(argv[i], "EXTRACTONLY", strlen(argv[i])) == 0)
+        {
+            download_options.extract_existing_only = 1;
+            download_options.extract_archives = TRUE;
+        }
+
+        if (strncasecmp_custom(argv[i], "FORCEEXTRACT", strlen(argv[i])) == 0)
+        {
+            download_options.force_extract = TRUE;
+        }
+
+        if (strncasecmp_custom(argv[i], "NODOWNLOADSKIP", strlen(argv[i])) == 0)
+        {
+            download_options.skip_download_if_extracted = FALSE;
+        }
+
+        if (strncasecmp_custom(argv[i], "FORCEDOWNLOAD", strlen(argv[i])) == 0)
+        {
+            download_options.force_download = TRUE;
+        }
+    }
+
+    if (!validate_extraction_startup_configuration(&download_options))
+    {
+        log_error(LOG_GENERAL, "main: extraction startup validation failed, exiting\n");
+        do_shutdown();
+        return RETURN_FAIL;
     }
 
     for (i = 0; i < 5; i++)
@@ -457,6 +604,39 @@ int main(int argc, char *argv[])
 
     /* Clean holding directory if program is run again */
     delete_all_files_in_dir(DIR_HOLDING);
+
+    if (download_options.extract_existing_only == 1)
+    {
+        int extract_errors = 0;
+
+        log_info(LOG_GENERAL, "main: EXTRACTONLY enabled; processing existing archives only\n");
+        printf("\nEXTRACTONLY mode: processing existing archives from local DAT files...\n");
+
+        for (i = 0; i < 5; i++)
+        {
+            if (whdload_pack_defs[i].user_requested_download == 1)
+            {
+                response_code = extract_existing_archives_if_file_exists(&whdload_pack_defs[i], &download_options);
+                if (response_code != 0)
+                {
+                    extract_errors++;
+                }
+            }
+        }
+
+        if (extract_errors > 0)
+        {
+            printf("\nEXTRACTONLY completed with errors. Check PROGDIR:logs for details.\n\n");
+            log_warning(LOG_GENERAL, "main: EXTRACTONLY completed with %ld pack-level errors\n", (long)extract_errors);
+            do_shutdown();
+            return RETURN_WARN;
+        }
+
+        printf("\nEXTRACTONLY complete.\n\n");
+        log_info(LOG_GENERAL, "main: EXTRACTONLY completed successfully\n");
+        do_shutdown();
+        return 0;
+    }
 
         /* Initialize with tag values */
         log_info(LOG_GENERAL, "main: calling ad_init_download_lib_taglist...\n");
@@ -569,7 +749,7 @@ int main(int argc, char *argv[])
             {
                 printf("\n" textReset textBold "Downloading %s..." textReset "\n", 
                        whdload_pack_defs[i].full_text_name_of_pack);
-                response_code = download_roms_if_file_exists(&whdload_pack_defs[i], replace_files);
+                response_code = download_roms_if_file_exists(&whdload_pack_defs[i], &download_options, replace_files);
                 if (response_code == 20)
                 {
                     break;
@@ -713,6 +893,14 @@ BOOL startup_text_and_needed_progs_are_installed(int number_of_args)
             add_line(&tb, "  SKIPNTSC/S<ex23>Skip NTSC packages");
             add_line(&tb, "  SKIPNONENGLISH/S<ex23>Skip non-English packages");
             add_line(&tb, "  QUIET/S<ex23>Suppress WGet and UnZip output");
+            add_line(&tb, "  NOEXTRACT/S<ex23>Disable post-download archive extraction");
+            add_line(&tb, "  EXTRACTTO/K<ex23>Extract archives to a separate target path");
+            add_line(&tb, "  KEEPARCHIVES/S<ex23>Keep downloaded archives after extraction");
+            add_line(&tb, "  DELETEARCHIVES/S<ex23>Delete downloaded archives after extraction");
+            add_line(&tb, "  EXTRACTONLY/S<ex23>Extract already-downloaded archives only");
+            add_line(&tb, "  FORCEEXTRACT/S<ex23>Always extract even when ArchiveName.txt matches");
+            add_line(&tb, "  NODOWNLOADSKIP/S<ex23>Disable marker-based pre-download skip");
+            add_line(&tb, "  FORCEDOWNLOAD/S<ex23>Always download even when extracted marker matches");
 
             add_line(&tb, "");
             add_line(&tb, "<b>Examples:</b>");
@@ -722,12 +910,25 @@ BOOL startup_text_and_needed_progs_are_installed(int number_of_args)
             add_line(&tb, "<ex06>Download all packs, skipping AGA packages");
             add_line(&tb, "  WHDDownloader LATESTDATONLY");
             add_line(&tb, "<ex06>Download latest DAT files only (no game files)");
+            add_line(&tb, "  WHDDownloader DOWNLOADGAMES EXTRACTTO=Games: KEEPARCHIVES");
+            add_line(&tb, "<ex06>Download games and extract to Games: while keeping archives");
+            add_line(&tb, "  WHDDownloader DOWNLOADBETAGAMES EXTRACTONLY EXTRACTTO=Games: KEEPARCHIVES");
+            add_line(&tb, "<ex06>Extract existing beta-game archives without redownloading");
+            add_line(&tb, "  WHDDownloader DOWNLOADGAMES FORCEEXTRACT");
+            add_line(&tb, "<ex06>Force extraction even when a matching ArchiveName.txt already exists");
+            add_line(&tb, "  WHDDownloader DOWNLOADGAMES FORCEDOWNLOAD");
+            add_line(&tb, "<ex06>Bypass pre-download marker checks and always download archives");
             add_line(&tb, "");
             add_line(&tb, "<b>Notes</b><ut>");
             add_line(&tb, "</b>  -<ex04></b>A fast Amiga setup is recommended for large downloads.");
             add_line(&tb, "</b>  -<ex04>On WinUAE, entire sets can be downloaded in under an hour.");
             add_line(&tb, "</b>  -<ex04>On real Amiga hardware, speed may vary depending on CPU and network connectivity");
-            add_line(&tb, "</b>  -<ex04>This is work in progress.  Auto unpacking of the downloaded files is planned, but for now, please use WHDArchiveExtractor to extract all archives at once.");
+            add_line(&tb, "</b>  -<ex04>Archive extraction can be configured with NOEXTRACT, EXTRACTTO, KEEPARCHIVES, and DELETEARCHIVES.");
+            add_line(&tb, "</b>  -<ex04>By default, extraction is skipped when ArchiveName.txt line 2 exactly matches the archive filename.");
+            add_line(&tb, "</b>  -<ex04>By default, download is also skipped when an extracted ArchiveName.txt match is found.");
+            add_line(&tb, "</b>  -<ex04>Use FORCEEXTRACT to bypass the skip check and always re-extract.");
+            add_line(&tb, "</b>  -<ex04>Use FORCEDOWNLOAD to bypass pre-download skip and always fetch archives.");
+            add_line(&tb, "</b>  -<ex04>Use EXTRACTONLY to process archives that are already present in GameFiles/.");
             add_line(&tb, "</b>  -<ex04>Deletion of existing files is not yet implemented.");
             add_line(&tb, "</b>  -<ex04>For comments and suggestions, please visit the GitHub repository at https://github.com/Kwezza/RetroPlay-WHDLoad-downloader");
 
@@ -758,6 +959,14 @@ void setup_app_defaults(struct whdload_pack_def WHDLoadPackDefs[], struct downlo
         downloadOptions->get_dats_only = 0;
         downloadOptions->no_skip_messages = 0;
         downloadOptions->no_wget_output = 0;
+        downloadOptions->extract_archives = TRUE;
+        downloadOptions->skip_existing_extractions = TRUE;
+        downloadOptions->force_extract = FALSE;
+        downloadOptions->skip_download_if_extracted = TRUE;
+        downloadOptions->force_download = FALSE;
+        downloadOptions->extract_path = NULL;
+        downloadOptions->delete_archives_after_extract = TRUE;
+        downloadOptions->extract_existing_only = 0;
     }
 
     WHDLoadPackDefs[DEMOS_BETA].count_existing_files_skipped = 0;
@@ -1501,29 +1710,164 @@ char *get_first_matching_fileName(const char *fileNameToFind)
     return fullFilename;
 }
 
-long download_roms_if_file_exists(struct whdload_pack_def *WHDLoadPackDefs, int replaceFiles)
+long download_roms_if_file_exists(struct whdload_pack_def *WHDLoadPackDefs,
+                                  const struct download_option *download_options,
+                                  int replaceFiles)
 {
     char foundFilename[256] = {0};
     char *fileNameToRead = get_first_matching_fileName(WHDLoadPackDefs->filter_dat_files);
     long returnCode = 0;
+
+    if (fileNameToRead == NULL)
+    {
+        log_warning(LOG_GENERAL,
+                    "download: no DAT file found for filter '%s' in '%s'\n",
+                    WHDLoadPackDefs->filter_dat_files,
+                    DIR_DAT_FILES);
+        return 20;
+    }
 
     sanitize_amiga_file_path(fileNameToRead);
     sprintf(foundFilename, "%s/%s", DIR_DAT_FILES, fileNameToRead);
 
     if (does_file_or_folder_exist(foundFilename, 0))
     {
-        returnCode = download_roms_from_file(foundFilename, WHDLoadPackDefs, replaceFiles);
+        returnCode = download_roms_from_file(foundFilename, WHDLoadPackDefs, download_options, replaceFiles);
     }
     else
     {
         printf("File not found %s\n", foundFilename);
         returnCode = 20;
     }
+
+    amiga_free(fileNameToRead);
     return returnCode;
 }
 
+LONG extract_existing_archives_if_file_exists(struct whdload_pack_def *WHDLoadPackDefs,
+                                              const struct download_option *download_options)
+{
+    char foundFilename[256] = {0};
+    char *fileNameToRead = get_first_matching_fileName(WHDLoadPackDefs->filter_dat_files);
+    LONG returnCode = 0;
+
+    if (fileNameToRead == NULL)
+    {
+        log_warning(LOG_GENERAL,
+                    "extract: no DAT file found for filter '%s' in '%s'\n",
+                    WHDLoadPackDefs->filter_dat_files,
+                    DIR_DAT_FILES);
+        return 20;
+    }
+
+    sanitize_amiga_file_path(fileNameToRead);
+    sprintf(foundFilename, "%s/%s", DIR_DAT_FILES, fileNameToRead);
+
+    if (does_file_or_folder_exist(foundFilename, 0))
+    {
+        returnCode = extract_existing_archives_from_file(foundFilename, WHDLoadPackDefs, download_options);
+    }
+    else
+    {
+        printf("DAT file not found %s\n", foundFilename);
+        log_warning(LOG_GENERAL, "extract: DAT file not found '%s'\n", foundFilename);
+        returnCode = 20;
+    }
+
+    amiga_free(fileNameToRead);
+    return returnCode;
+}
+
+LONG extract_existing_archives_from_file(const char *filename,
+                                         struct whdload_pack_def *WHDLoadPackDefs,
+                                         const struct download_option *download_options)
+{
+    FILE *filePtr;
+    char buffer[256] = {0};
+    char archivePath[512] = {0};
+    char firstLetter[2] = {0};
+    int len = 0;
+    LONG extractCode = 0;
+    LONG extractedCount = 0;
+    LONG missingCount = 0;
+    LONG failedCount = 0;
+
+    filePtr = fopen(filename, "r");
+    if (filePtr == NULL)
+    {
+        log_error(LOG_GENERAL, "extract: unable to open DAT file '%s'\n", filename);
+        return 1;
+    }
+
+    while (fgets(buffer, sizeof(buffer), filePtr) != NULL)
+    {
+        len = strlen(buffer);
+        while (len > 0 && (buffer[len - 1] == '\r' || buffer[len - 1] == '\n'))
+        {
+            buffer[len - 1] = '\0';
+            len--;
+        }
+
+        if (buffer[0] == '\0')
+        {
+            continue;
+        }
+
+        firstLetter[0] = buffer[0];
+        firstLetter[1] = '\0';
+        get_folder_name_from_character(firstLetter);
+
+        sprintf(archivePath,
+                "%s/%s/%s/%s",
+                DIR_GAME_DOWNLOADS,
+                WHDLoadPackDefs->extracted_pack_dir,
+                firstLetter,
+                buffer);
+        sanitize_amiga_file_path(archivePath);
+
+        if (!does_file_or_folder_exist(archivePath, 1))
+        {
+            missingCount++;
+            continue;
+        }
+
+        extractCode = extract_process_downloaded_archive(archivePath,
+                                                         buffer,
+                                                         WHDLoadPackDefs->extracted_pack_dir,
+                                                         firstLetter,
+                                                         WHDLoadPackDefs->full_text_name_of_pack,
+                                                         download_options);
+        if (extractCode == EXTRACT_RESULT_OK)
+        {
+            extractedCount++;
+        }
+        else
+        {
+            failedCount++;
+            log_warning(LOG_GENERAL,
+                        "extract: failed to process existing archive '%s' (code=%ld)\n",
+                        archivePath,
+                        (long)extractCode);
+        }
+    }
+
+    fclose(filePtr);
+
+    log_info(LOG_GENERAL,
+             "extract: existing archive pass for '%s' complete (extracted=%ld missing=%ld failed=%ld)\n",
+             WHDLoadPackDefs->full_text_name_of_pack,
+             (long)extractedCount,
+             (long)missingCount,
+             (long)failedCount);
+
+    return (failedCount > 0) ? 1 : 0;
+}
+
 /* Function to read a file and print its contents */
-long download_roms_from_file(const char *filename, struct whdload_pack_def *WHDLoadPackDefs, int replaceFiles)
+long download_roms_from_file(const char *filename,
+                             struct whdload_pack_def *WHDLoadPackDefs,
+                             const struct download_option *download_options,
+                             int replaceFiles)
 {
     FILE *filePtr;
     char buffer[256] = {0};
@@ -1543,7 +1887,7 @@ long download_roms_from_file(const char *filename, struct whdload_pack_def *WHDL
         {                           /* Check if the last character is a carriage return */
             buffer[len - 1] = '\0'; /* Replace it with a null terminator */
         }
-        if (execute_wget_download_command(buffer, WHDLoadPackDefs, replaceFiles) == 20)
+        if (execute_wget_download_command(buffer, WHDLoadPackDefs, download_options, replaceFiles) == 20)
         {
             printf(textReset "User cancelled download or error\n");
             fclose(filePtr);
@@ -1559,7 +1903,10 @@ long download_roms_from_file(const char *filename, struct whdload_pack_def *WHDL
     return 0;
 }
 
-LONG execute_wget_download_command(const char *downloadWHDFile, struct whdload_pack_def *WHDLoadPackDefs, int replaceFiles)
+LONG execute_wget_download_command(const char *downloadWHDFile,
+                                   struct whdload_pack_def *WHDLoadPackDefs,
+                                   const struct download_option *download_options,
+                                   int replaceFiles)
 {
 
     /*creates wget command string, and then calls it*/
@@ -1569,7 +1916,14 @@ LONG execute_wget_download_command(const char *downloadWHDFile, struct whdload_p
     char downloadFirstLetter[2] = {0};
     char formattedFileName[256] = {0};
     char formattedFileNameP2[256] = {0};
+    char matchedExtractFolder[EXTRACT_MAX_PATH] = {0};
+    LONG extractCode;
     LONG returnCode;
+
+    if (replaceFiles != 0)
+    {
+        log_debug(LOG_DOWNLOAD, "download: replaceFiles flag is set but currently unused\n");
+    }
 
     sprintf(downloadFirstLetter, "%c", downloadWHDFile[0]);
     get_folder_name_from_character(downloadFirstLetter);
@@ -1582,24 +1936,82 @@ LONG execute_wget_download_command(const char *downloadWHDFile, struct whdload_p
         {
             printf(textReset "File already exists, skipping: %s\n", downloadWHDFile);
         }
+        if (download_options != NULL && download_options->extract_archives == TRUE)
+        {
+            log_info(LOG_GENERAL,
+                     "extract: archive '%s' already exists; extraction runs post-download in normal mode. Use EXTRACTONLY to process existing archives.\n",
+                     downloadWHDFile);
+        }
         files_skipped = files_skipped + 1;
         WHDLoadPackDefs->count_existing_files_skipped = WHDLoadPackDefs->count_existing_files_skipped + 1;
 
         return 2;
     }
+
+    if (download_options != NULL &&
+        extract_is_archive_already_extracted(fileName,
+                                             downloadWHDFile,
+                                             WHDLoadPackDefs->extracted_pack_dir,
+                                             downloadFirstLetter,
+                                             download_options,
+                                             matchedExtractFolder,
+                                             sizeof(matchedExtractFolder)))
+    {
+        if (no_skip_messages < 1)
+        {
+            printf(textReset "Already extracted, skipping download: %s\n", downloadWHDFile);
+        }
+
+        log_info(LOG_GENERAL,
+                 "download: skipped '%s' because extracted marker already exists at '%s'\n",
+                 downloadWHDFile,
+                 matchedExtractFolder);
+
+        files_skipped = files_skipped + 1;
+        WHDLoadPackDefs->count_existing_files_skipped = WHDLoadPackDefs->count_existing_files_skipped + 1;
+        return 2;
+    }
+
     Format_text_split_by_Caps(downloadWHDFile, formattedFileName, sizeof(formattedFileName));
     turn_filename_into_text_with_spaces(downloadWHDFile, formattedFileNameP2);
     printf("\n" textReset textBold "Downloading %s " textReset "(%s) (Ctrl-c to cancel)" textBlue ".\n", formattedFileName, formattedFileNameP2);
 
-    WHDLoadPackDefs->count_new_files_downloaded = WHDLoadPackDefs->count_new_files_downloaded + 1;
     create_directory_based_on_filename(WHDLoadPackDefs->extracted_pack_dir, downloadWHDFile);
     sprintf(downloadUrl, "%s%s/%s", WHDLoadPackDefs->download_url, downloadFirstLetter, downloadWHDFile);
     sprintf(downloadCommand, "wget -x %s -O \"%s\" \"%s\" ", silent_wget_command, fileName, downloadUrl);
     remove_CR_LF_from_string(downloadCommand);
 
     returnCode = SystemTagList(downloadCommand, NULL);
+
+    if (returnCode != 0)
+    {
+        log_error(LOG_DOWNLOAD,
+                  "download: wget failed for '%s' (return=%ld)\n",
+                  downloadWHDFile,
+                  (long)returnCode);
+        return returnCode;
+    }
+
     files_downloaded = files_downloaded + 1;
     WHDLoadPackDefs->count_new_files_downloaded = WHDLoadPackDefs->count_new_files_downloaded + 1;
+
+    if (download_options != NULL && download_options->extract_archives == TRUE)
+    {
+        extractCode = extract_process_downloaded_archive(fileName,
+                                                         downloadWHDFile,
+                                                         WHDLoadPackDefs->extracted_pack_dir,
+                                                         downloadFirstLetter,
+                                                         WHDLoadPackDefs->full_text_name_of_pack,
+                                                         download_options);
+
+        if (extractCode != EXTRACT_RESULT_OK)
+        {
+            log_warning(LOG_GENERAL,
+                        "extract: post-download extraction failed for '%s' (code=%ld), continuing\n",
+                        downloadWHDFile,
+                        (long)extractCode);
+        }
+    }
 
     return returnCode;
 }

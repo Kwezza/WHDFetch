@@ -94,6 +94,7 @@ SRCS = \
     $(SRC_DIR)/tag_text.c \
     $(SRC_DIR)/cli_utilities.c \
     $(SRC_DIR)/linecounter.c \
+	$(SRC_DIR)/extract/extract.c \
     $(SRC_DIR)/download/http_download.c \
     $(SRC_DIR)/download/download_lib.c \
     $(SRC_DIR)/download/file_crc.c \
@@ -114,6 +115,7 @@ OBJS = \
     $(OUT_DIR)/tag_text.o \
     $(OUT_DIR)/cli_utilities.o \
     $(OUT_DIR)/linecounter.o \
+	$(OUT_DIR)/extract/extract.o \
     $(OUT_DIR)/download/http_download.o \
     $(OUT_DIR)/download/download_lib.o \
     $(OUT_DIR)/download/file_crc.o \
@@ -134,6 +136,7 @@ directories:
 	@if not exist "$(OUT_DIR)"            mkdir "$(OUT_DIR)"
 	@if not exist "$(OUT_DIR)\log"        mkdir "$(OUT_DIR)\log"
 	@if not exist "$(OUT_DIR)\platform"  mkdir "$(OUT_DIR)\platform"
+	@if not exist "$(OUT_DIR)\extract"   mkdir "$(OUT_DIR)\extract"
 	@if not exist "$(OUT_DIR)\download"  mkdir "$(OUT_DIR)\download"
 	@if not exist "$(BIN_DIR)"            mkdir "$(BIN_DIR)"
 
@@ -169,6 +172,10 @@ $(OUT_DIR)/cli_utilities.o: $(SRC_DIR)/cli_utilities.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(OUT_DIR)/linecounter.o: $(SRC_DIR)/linecounter.c
+	@echo Compiling: $<
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OUT_DIR)/extract/extract.o: $(SRC_DIR)/extract/extract.c
 	@echo Compiling: $<
 	$(CC) $(CFLAGS) -c $< -o $@
 

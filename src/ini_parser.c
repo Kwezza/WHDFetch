@@ -144,8 +144,15 @@ static BOOL set_cleanup_removals_from_csv(const char *csv)
     return TRUE;
 }
 
-static void apply_global_key_value(const char *key, const char *value)
+static void apply_global_key_value(const char *key, const char *value, download_option *download_opts)
 {
+    int bool_value;
+
+    if (download_opts == NULL)
+    {
+        return;
+    }
+
     if (stricmp_custom(key, "download_website") == 0)
     {
         set_string_override(&DOWNLOAD_WEBSITE, value);
@@ -173,6 +180,78 @@ static void apply_global_key_value(const char *key, const char *value)
     if (stricmp_custom(key, "link_cleanup_removals") == 0)
     {
         set_cleanup_removals_from_csv(value);
+        return;
+    }
+
+    if (stricmp_custom(key, "extract_archives") == 0)
+    {
+        if (!parse_boolean_value(value, &bool_value))
+        {
+            log_warning(LOG_GENERAL, "ini: invalid boolean value '%s' ignored\n", value);
+            return;
+        }
+
+        download_opts->extract_archives = bool_value ? TRUE : FALSE;
+        return;
+    }
+
+    if (stricmp_custom(key, "skip_existing_extractions") == 0)
+    {
+        if (!parse_boolean_value(value, &bool_value))
+        {
+            log_warning(LOG_GENERAL, "ini: invalid boolean value '%s' ignored\n", value);
+            return;
+        }
+
+        download_opts->skip_existing_extractions = bool_value ? TRUE : FALSE;
+        return;
+    }
+
+    if (stricmp_custom(key, "skip_download_if_extracted") == 0)
+    {
+        if (!parse_boolean_value(value, &bool_value))
+        {
+            log_warning(LOG_GENERAL, "ini: invalid boolean value '%s' ignored\n", value);
+            return;
+        }
+
+        download_opts->skip_download_if_extracted = bool_value ? TRUE : FALSE;
+        return;
+    }
+
+    if (stricmp_custom(key, "force_download") == 0)
+    {
+        if (!parse_boolean_value(value, &bool_value))
+        {
+            log_warning(LOG_GENERAL, "ini: invalid boolean value '%s' ignored\n", value);
+            return;
+        }
+
+        download_opts->force_download = bool_value ? TRUE : FALSE;
+        return;
+    }
+
+    if (stricmp_custom(key, "extract_path") == 0)
+    {
+        if (value[0] == '\0')
+        {
+            download_opts->extract_path = NULL;
+            return;
+        }
+
+        set_string_override(&download_opts->extract_path, value);
+        return;
+    }
+
+    if (stricmp_custom(key, "delete_archives_after_extract") == 0)
+    {
+        if (!parse_boolean_value(value, &bool_value))
+        {
+            log_warning(LOG_GENERAL, "ini: invalid boolean value '%s' ignored\n", value);
+            return;
+        }
+
+        download_opts->delete_archives_after_extract = bool_value ? TRUE : FALSE;
         return;
     }
 
@@ -373,7 +452,7 @@ BOOL ini_parser_load_overrides(whdload_pack_def pack_defs[], download_option *do
             switch (current_type)
             {
                 case INI_SECTION_GLOBAL:
-                    apply_global_key_value(key, value);
+                    apply_global_key_value(key, value, download_opts);
                     break;
 
                 case INI_SECTION_FILTERS:
