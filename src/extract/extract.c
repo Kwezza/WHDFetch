@@ -10,6 +10,670 @@
 
 #define EXTRACT_LISTING_FILE "T:whdd_lha_listing.txt"
 #define EXTRACT_ICONS_DIR    "PROGDIR:Icons"
+#define EXTRACT_INDEX_FILE_NAME ".archive_index"
+#define EXTRACT_INDEX_LINE_MAX  768
+
+typedef struct archive_index_cache {
+    char target_directory[EXTRACT_MAX_PATH];
+    char **archive_names;
+    char **folder_names;
+    int entry_count;
+    int capacity;
+    BOOL loaded;
+    BOOL dirty;
+} archive_index_cache;
+
+static archive_index_cache g_archive_index_cache = {0};
+
+static BOOL extract_read_archive_name_from_metadata(const char *target_directory,
+                                                    const char *game_folder_name,
+                                                    char *out_archive_name,
+                                                    size_t out_archive_name_size);
+
+static char *index_strdup(const char *text)
+{
+    size_t len;
+    char *copy;
+
+    if (text == NULL)
+    {
+        return NULL;
+    }
+
+    len = strlen(text);
+    copy = amiga_malloc(len + 1);
+    if (copy == NULL)
+    {
+        return NULL;
+    }
+
+    strcpy(copy, text);
+    return copy;
+}
+
+static void index_clear_entries(archive_index_cache *cache)
+{
+    int i;
+
+    if (cache == NULL)
+    {
+        return;
+    }
+
+    for (i = 0; i < cache->entry_count; i++)
+    {
+        if (cache->archive_names != NULL && cache->archive_names[i] != NULL)
+        {
+            amiga_free(cache->archive_names[i]);
+            cache->archive_names[i] = NULL;
+        }
+
+        if (cache->folder_names != NULL && cache->folder_names[i] != NULL)
+        {
+            amiga_free(cache->folder_names[i]);
+            cache->folder_names[i] = NULL;
+        }
+    }
+
+    if (cache->archive_names != NULL)
+    {
+        amiga_free(cache->archive_names);
+        cache->archive_names = NULL;
+    }
+
+    if (cache->folder_names != NULL)
+    {
+        amiga_free(cache->folder_names);
+        cache->folder_names = NULL;
+    }
+
+    cache->entry_count = 0;
+    cache->capacity = 0;
+}
+
+static void index_reset_cache(archive_index_cache *cache)
+{
+    if (cache == NULL)
+    {
+        return;
+    }
+
+    index_clear_entries(cache);
+    cache->target_directory[0] = '\0';
+    cache->loaded = FALSE;
+    cache->dirty = FALSE;
+}
+
+static BOOL index_build_file_path(const char *target_directory,
+                                  char *out_index_path,
+                                  size_t out_index_path_size)
+{
+    if (target_directory == NULL || out_index_path == NULL || out_index_path_size == 0)
+    {
+        return FALSE;
+    }
+
+    if (snprintf(out_index_path,
+                 out_index_path_size,
+                 "%s/%s",
+                 target_directory,
+                 EXTRACT_INDEX_FILE_NAME) >= (int)out_index_path_size)
+    {
+        return FALSE;
+    }
+
+    sanitize_amiga_file_path(out_index_path);
+    return TRUE;
+}
+
+static int index_find_entry(const archive_index_cache *cache, const char *archive_filename)
+{
+    int i;
+
+    if (cache == NULL || archive_filename == NULL)
+    {
+        return -1;
+    }
+
+    for (i = 0; i < cache->entry_count; i++)
+    {
+        if (cache->archive_names[i] != NULL && strcmp(cache->archive_names[i], archive_filename) == 0)
+        {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+static BOOL index_ensure_capacity(archive_index_cache *cache, int required_capacity)
+{
+    int new_capacity;
+    int i;
+    char **new_archive_names;
+    char **new_folder_names;
+
+    if (cache == NULL)
+    {
+        return FALSE;
+    }
+
+    if (cache->capacity >= required_capacity)
+    {
+        return TRUE;
+    }
+
+    new_capacity = (cache->capacity > 0) ? cache->capacity : 32;
+    while (new_capacity < required_capacity)
+    {
+        new_capacity *= 2;
+    }
+
+    new_archive_names = amiga_malloc((size_t)new_capacity * sizeof(char *));
+    new_folder_names = amiga_malloc((size_t)new_capacity * sizeof(char *));
+    if (new_archive_names == NULL || new_folder_names == NULL)
+    {
+        if (new_archive_names != NULL)
+            amiga_free(new_archive_names);
+        if (new_folder_names != NULL)
+            amiga_free(new_folder_names);
+        return FALSE;
+    }
+
+    memset(new_archive_names, 0, (size_t)new_capacity * sizeof(char *));
+    memset(new_folder_names, 0, (size_t)new_capacity * sizeof(char *));
+
+    for (i = 0; i < cache->entry_count; i++)
+    {
+        new_archive_names[i] = cache->archive_names[i];
+        new_folder_names[i] = cache->folder_names[i];
+    }
+
+    if (cache->archive_names != NULL)
+    {
+        amiga_free(cache->archive_names);
+    }
+
+    if (cache->folder_names != NULL)
+    {
+        amiga_free(cache->folder_names);
+    }
+
+    cache->archive_names = new_archive_names;
+    cache->folder_names = new_folder_names;
+    cache->capacity = new_capacity;
+    return TRUE;
+}
+
+static BOOL index_set_entry(archive_index_cache *cache,
+                            const char *archive_filename,
+                            const char *folder_name,
+                            BOOL *out_changed)
+{
+    int entry_index;
+    char *new_archive_name;
+    char *new_folder_name;
+
+    if (out_changed != NULL)
+    {
+        *out_changed = FALSE;
+    }
+
+    if (cache == NULL || archive_filename == NULL || folder_name == NULL ||
+        archive_filename[0] == '\0' || folder_name[0] == '\0')
+    {
+        return FALSE;
+    }
+
+    entry_index = index_find_entry(cache, archive_filename);
+    if (entry_index >= 0)
+    {
+        if (cache->folder_names[entry_index] != NULL && strcmp(cache->folder_names[entry_index], folder_name) == 0)
+        {
+            return TRUE;
+        }
+
+        new_folder_name = index_strdup(folder_name);
+        if (new_folder_name == NULL)
+        {
+            return FALSE;
+        }
+
+        if (cache->folder_names[entry_index] != NULL)
+        {
+            amiga_free(cache->folder_names[entry_index]);
+        }
+        cache->folder_names[entry_index] = new_folder_name;
+
+        if (out_changed != NULL)
+        {
+            *out_changed = TRUE;
+        }
+        return TRUE;
+    }
+
+    if (!index_ensure_capacity(cache, cache->entry_count + 1))
+    {
+        return FALSE;
+    }
+
+    new_archive_name = index_strdup(archive_filename);
+    new_folder_name = index_strdup(folder_name);
+    if (new_archive_name == NULL || new_folder_name == NULL)
+    {
+        if (new_archive_name != NULL)
+            amiga_free(new_archive_name);
+        if (new_folder_name != NULL)
+            amiga_free(new_folder_name);
+        return FALSE;
+    }
+
+    cache->archive_names[cache->entry_count] = new_archive_name;
+    cache->folder_names[cache->entry_count] = new_folder_name;
+    cache->entry_count++;
+
+    if (out_changed != NULL)
+    {
+        *out_changed = TRUE;
+    }
+
+    return TRUE;
+}
+
+static BOOL index_remove_entry_by_archive_name(archive_index_cache *cache, const char *archive_filename)
+{
+    int entry_index;
+    int i;
+
+    if (cache == NULL || archive_filename == NULL)
+    {
+        return FALSE;
+    }
+
+    entry_index = index_find_entry(cache, archive_filename);
+    if (entry_index < 0)
+    {
+        return FALSE;
+    }
+
+    if (cache->archive_names[entry_index] != NULL)
+    {
+        amiga_free(cache->archive_names[entry_index]);
+        cache->archive_names[entry_index] = NULL;
+    }
+
+    if (cache->folder_names[entry_index] != NULL)
+    {
+        amiga_free(cache->folder_names[entry_index]);
+        cache->folder_names[entry_index] = NULL;
+    }
+
+    for (i = entry_index; i < cache->entry_count - 1; i++)
+    {
+        cache->archive_names[i] = cache->archive_names[i + 1];
+        cache->folder_names[i] = cache->folder_names[i + 1];
+    }
+
+    if (cache->entry_count > 0)
+    {
+        cache->archive_names[cache->entry_count - 1] = NULL;
+        cache->folder_names[cache->entry_count - 1] = NULL;
+        cache->entry_count--;
+    }
+
+    cache->dirty = TRUE;
+    return TRUE;
+}
+
+static BOOL index_parse_file(const char *index_path, archive_index_cache *cache)
+{
+    FILE *index_file;
+    char line[EXTRACT_INDEX_LINE_MAX] = {0};
+
+    if (index_path == NULL || cache == NULL)
+    {
+        return FALSE;
+    }
+
+    index_file = fopen(index_path, "r");
+    if (index_file == NULL)
+    {
+        return FALSE;
+    }
+
+    while (fgets(line, sizeof(line), index_file) != NULL)
+    {
+        char *cursor;
+        char *tab;
+        char *archive_name;
+        char *folder_name;
+
+        remove_CR_LF_from_string(line);
+        cursor = line;
+        while (*cursor != '\0' && isspace((unsigned char)*cursor))
+        {
+            cursor++;
+        }
+
+        if (cursor[0] == '\0')
+        {
+            continue;
+        }
+
+        if (cursor[0] == '#' || cursor[0] == ';')
+        {
+            continue;
+        }
+
+        tab = strchr(cursor, '\t');
+        if (tab == NULL)
+        {
+            log_warning(LOG_GENERAL, "extract-index: skipping malformed line in '%s'\n", index_path);
+            continue;
+        }
+
+        *tab = '\0';
+        archive_name = cursor;
+        folder_name = tab + 1;
+
+        if (archive_name[0] == '\0' || folder_name[0] == '\0')
+        {
+            log_warning(LOG_GENERAL, "extract-index: skipping empty entry in '%s'\n", index_path);
+            continue;
+        }
+
+        if (!index_set_entry(cache, archive_name, folder_name, NULL))
+        {
+            fclose(index_file);
+            return FALSE;
+        }
+    }
+
+    fclose(index_file);
+    return TRUE;
+}
+
+static BOOL index_write_file(const char *index_path, const archive_index_cache *cache)
+{
+    FILE *index_file;
+    int i;
+
+    if (index_path == NULL || cache == NULL)
+    {
+        return FALSE;
+    }
+
+    index_file = fopen(index_path, "w");
+    if (index_file == NULL)
+    {
+        return FALSE;
+    }
+
+    if (fprintf(index_file,
+                "# WHDDownloader archive index (auto-generated)\n"
+                "# Maps archive filename to extracted folder name.\n"
+                "# Format: <archive_filename>\\t<folder_name>\n") < 0)
+    {
+        fclose(index_file);
+        return FALSE;
+    }
+
+    for (i = 0; i < cache->entry_count; i++)
+    {
+        if (cache->archive_names[i] == NULL || cache->folder_names[i] == NULL)
+        {
+            continue;
+        }
+
+        if (fprintf(index_file, "%s\t%s\n", cache->archive_names[i], cache->folder_names[i]) < 0)
+        {
+            fclose(index_file);
+            return FALSE;
+        }
+    }
+
+    fclose(index_file);
+
+#ifdef FIBF_HIDDEN
+    if (!SetProtection(index_path, FIBF_HIDDEN))
+    {
+        log_warning(LOG_GENERAL,
+                    "extract-index: SetProtection(FIBF_HIDDEN) failed for '%s' (IoErr=%ld)\n",
+                    index_path,
+                    (long)IoErr());
+    }
+#endif
+
+    return TRUE;
+}
+
+static BOOL index_build_from_scan(const char *target_directory, archive_index_cache *cache)
+{
+    BPTR directory_lock;
+    struct FileInfoBlock *fib;
+    char metadata_archive_name[EXTRACT_MAX_PATH] = {0};
+
+    if (target_directory == NULL || cache == NULL)
+    {
+        return FALSE;
+    }
+
+    directory_lock = Lock(target_directory, ACCESS_READ);
+    if (directory_lock == 0)
+    {
+        return FALSE;
+    }
+
+    fib = amiga_malloc(sizeof(struct FileInfoBlock));
+    if (fib == NULL)
+    {
+        UnLock(directory_lock);
+        return FALSE;
+    }
+
+    if (!Examine(directory_lock, fib))
+    {
+        amiga_free(fib);
+        UnLock(directory_lock);
+        return FALSE;
+    }
+
+    while (ExNext(directory_lock, fib))
+    {
+        if (fib->fib_DirEntryType <= 0)
+        {
+            continue;
+        }
+
+        if (fib->fib_FileName[0] == '.')
+        {
+            continue;
+        }
+
+        if (!extract_read_archive_name_from_metadata(target_directory,
+                                                     fib->fib_FileName,
+                                                     metadata_archive_name,
+                                                     sizeof(metadata_archive_name)))
+        {
+            continue;
+        }
+
+        if (!index_set_entry(cache, metadata_archive_name, fib->fib_FileName, NULL))
+        {
+            amiga_free(fib);
+            UnLock(directory_lock);
+            return FALSE;
+        }
+    }
+
+    amiga_free(fib);
+    UnLock(directory_lock);
+    return TRUE;
+}
+
+BOOL extract_index_load(const char *target_directory)
+{
+    char index_path[EXTRACT_MAX_PATH] = {0};
+
+    if (target_directory == NULL || target_directory[0] == '\0')
+    {
+        return FALSE;
+    }
+
+    if (g_archive_index_cache.loaded && strcmp(g_archive_index_cache.target_directory, target_directory) == 0)
+    {
+        return TRUE;
+    }
+
+    if (g_archive_index_cache.loaded)
+    {
+        extract_index_flush();
+    }
+
+    index_reset_cache(&g_archive_index_cache);
+
+    strncpy(g_archive_index_cache.target_directory,
+            target_directory,
+            sizeof(g_archive_index_cache.target_directory) - 1);
+    g_archive_index_cache.target_directory[sizeof(g_archive_index_cache.target_directory) - 1] = '\0';
+    sanitize_amiga_file_path(g_archive_index_cache.target_directory);
+
+    if (!index_build_file_path(g_archive_index_cache.target_directory, index_path, sizeof(index_path)))
+    {
+        index_reset_cache(&g_archive_index_cache);
+        return FALSE;
+    }
+
+    if (does_file_or_folder_exist(index_path, 0))
+    {
+        if (!index_parse_file(index_path, &g_archive_index_cache))
+        {
+            index_reset_cache(&g_archive_index_cache);
+            return FALSE;
+        }
+
+        g_archive_index_cache.loaded = TRUE;
+        g_archive_index_cache.dirty = FALSE;
+        return TRUE;
+    }
+
+    if (!index_build_from_scan(g_archive_index_cache.target_directory, &g_archive_index_cache))
+    {
+        index_reset_cache(&g_archive_index_cache);
+        return FALSE;
+    }
+
+    g_archive_index_cache.loaded = TRUE;
+    g_archive_index_cache.dirty = (g_archive_index_cache.entry_count > 0) ? TRUE : FALSE;
+
+    if (g_archive_index_cache.dirty)
+    {
+        if (!index_write_file(index_path, &g_archive_index_cache))
+        {
+            log_warning(LOG_GENERAL,
+                        "extract-index: built cache for '%s' but failed to persist '%s'\n",
+                        g_archive_index_cache.target_directory,
+                        index_path);
+        }
+        else
+        {
+            g_archive_index_cache.dirty = FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
+BOOL extract_index_lookup(const char *target_directory,
+                          const char *archive_filename,
+                          char *out_folder_name,
+                          size_t out_folder_name_size)
+{
+    int entry_index;
+
+    if (target_directory == NULL || archive_filename == NULL ||
+        out_folder_name == NULL || out_folder_name_size == 0)
+    {
+        return FALSE;
+    }
+
+    if (!extract_index_load(target_directory))
+    {
+        return FALSE;
+    }
+
+    entry_index = index_find_entry(&g_archive_index_cache, archive_filename);
+    if (entry_index < 0 || g_archive_index_cache.folder_names[entry_index] == NULL)
+    {
+        return FALSE;
+    }
+
+    strncpy(out_folder_name, g_archive_index_cache.folder_names[entry_index], out_folder_name_size - 1);
+    out_folder_name[out_folder_name_size - 1] = '\0';
+    return TRUE;
+}
+
+BOOL extract_index_update(const char *target_directory,
+                          const char *archive_filename,
+                          const char *folder_name)
+{
+    BOOL changed = FALSE;
+
+    if (target_directory == NULL || archive_filename == NULL || folder_name == NULL)
+    {
+        return FALSE;
+    }
+
+    if (!extract_index_load(target_directory))
+    {
+        return FALSE;
+    }
+
+    if (!index_set_entry(&g_archive_index_cache, archive_filename, folder_name, &changed))
+    {
+        return FALSE;
+    }
+
+    if (changed)
+    {
+        g_archive_index_cache.dirty = TRUE;
+    }
+
+    return TRUE;
+}
+
+void extract_index_flush(void)
+{
+    char index_path[EXTRACT_MAX_PATH] = {0};
+
+    if (!g_archive_index_cache.loaded)
+    {
+        return;
+    }
+
+    if (g_archive_index_cache.dirty)
+    {
+        if (index_build_file_path(g_archive_index_cache.target_directory,
+                                  index_path,
+                                  sizeof(index_path)))
+        {
+            if (!index_write_file(index_path, &g_archive_index_cache))
+            {
+                log_warning(LOG_GENERAL,
+                            "extract-index: failed to flush '%s'\n",
+                            index_path);
+            }
+        }
+        else
+        {
+            log_warning(LOG_GENERAL,
+                        "extract-index: failed to build index path during flush for '%s'\n",
+                        g_archive_index_cache.target_directory);
+        }
+    }
+
+    index_reset_cache(&g_archive_index_cache);
+}
 
 static void extract_apply_whdload_folder_icon(const char *target_directory,
                                                const char *game_folder_name,
@@ -747,7 +1411,10 @@ BOOL extract_is_archive_already_extracted(const char *archive_path,
 {
     char target_directory[EXTRACT_MAX_PATH] = {0};
     char heuristic_folder_name[EXTRACT_MAX_NAME] = {0};
+    char indexed_folder_name[EXTRACT_MAX_NAME] = {0};
     char metadata_archive_name[EXTRACT_MAX_PATH] = {0};
+    char verify_path[EXTRACT_MAX_PATH] = {0};
+    BOOL index_loaded;
 
     if (archive_path == NULL || archive_filename == NULL || pack_dir == NULL || first_letter == NULL ||
         download_options == NULL)
@@ -796,6 +1463,53 @@ BOOL extract_is_archive_already_extracted(const char *archive_path,
         }
     }
 
+    /* Tier 2: archive index lookup (fast path). */
+    index_loaded = extract_index_load(target_directory);
+    if (index_loaded)
+    {
+        if (extract_index_lookup(target_directory,
+                                 archive_filename,
+                                 indexed_folder_name,
+                                 sizeof(indexed_folder_name)))
+        {
+            if (snprintf(verify_path,
+                         sizeof(verify_path),
+                         "%s/%s",
+                         target_directory,
+                         indexed_folder_name) < (int)sizeof(verify_path))
+            {
+                BPTR verify_lock;
+
+                sanitize_amiga_file_path(verify_path);
+                verify_lock = Lock(verify_path, ACCESS_READ);
+                if (verify_lock != 0)
+                {
+                    UnLock(verify_lock);
+
+                    if (out_match_folder_path != NULL && out_match_folder_path_size > 0)
+                    {
+                        strncpy(out_match_folder_path, verify_path, out_match_folder_path_size - 1);
+                        out_match_folder_path[out_match_folder_path_size - 1] = '\0';
+                    }
+
+                    return TRUE;
+                }
+
+                /* Stale index entry: folder was removed manually. */
+                if (index_remove_entry_by_archive_name(&g_archive_index_cache, archive_filename))
+                {
+                    log_debug(LOG_GENERAL,
+                              "extract-index: removed stale entry for '%s' in '%s'\n",
+                              archive_filename,
+                              target_directory);
+                }
+            }
+        }
+
+        return FALSE;
+    }
+
+    /* Fallback only if the index could not be loaded at all. */
     return extract_find_archive_by_scanning_metadata(target_directory,
                                                      archive_filename,
                                                      out_match_folder_path,
@@ -899,6 +1613,14 @@ LONG extract_process_downloaded_archive(const char *archive_path,
                                         archive_filename))
     {
         return EXTRACT_RESULT_METADATA_FAILED;
+    }
+
+    if (!extract_index_update(target_directory, archive_filename, game_folder_name))
+    {
+        log_warning(LOG_GENERAL,
+                    "extract-index: failed to update index for '%s' in '%s'\n",
+                    archive_filename,
+                    target_directory);
     }
 
     if (!extract_delete_archive_if_needed(archive_path, download_options))

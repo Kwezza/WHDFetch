@@ -50,4 +50,17 @@ BOOL extract_is_archive_already_extracted(const char *archive_path,
                                           char *out_match_folder_path,
                                           size_t out_match_folder_path_size);
 
+BOOL extract_index_load(const char *target_directory);
+
+BOOL extract_index_lookup(const char *target_directory,
+                          const char *archive_filename,
+                          char *out_folder_name,
+                          size_t out_folder_name_size);
+
+BOOL extract_index_update(const char *target_directory,
+                          const char *archive_filename,
+                          const char *folder_name);
+
+void extract_index_flush(void);
+
 #endif /* EXTRACT_H */

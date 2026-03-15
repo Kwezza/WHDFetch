@@ -270,6 +270,10 @@ static void do_shutdown(void)
         log_info(LOG_GENERAL, "do_shutdown: download lib was not initialized, skipping cleanup\n");
     }
 
+    log_info(LOG_GENERAL, "do_shutdown: flushing extract index cache...\n");
+    extract_index_flush();
+    log_info(LOG_GENERAL, "do_shutdown: extract index cache flush complete\n");
+
     log_info(LOG_GENERAL, "do_shutdown: freeing INI override allocations...\n");
     ini_parser_cleanup_overrides();
 

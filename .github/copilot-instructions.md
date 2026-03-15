@@ -1,34 +1,60 @@
-# amiga-base - GitHub Copilot Instructions
+# WHDDownloader - GitHub Copilot Instructions
 
 ## Project Overview
 
-**amiga-base** is a minimal AmigaOS starter project providing:
-- Memory allocation/deallocation tracking (`amiga_malloc`/`amiga_free`)
-- Multi-category file logging
-- A working ReAction window skeleton
+**WHDDownloader** is a VBCC/AmigaOS CLI tool that automates downloading and extracting WHDLoad game archives from the Retroplay FTP site. It:
 
-Target: **AmigaOS / Workbench 3.2+ (V47+)**, compiled with **VBCC v0.9x**, CPU **68000+**.
+- Downloads `index.html`, parses HTML links, and fetches matching `.zip` packs from the Retroplay site
+- Extracts XML DAT files from ZIPs, parses `<rom name="...">` entries, applies skip filters (AGA/CD/NTSC/language)
+- Downloads individual `.lha` ROM archives via `wget` into `GameFiles/<pack>/<letter>/`
+- Extracts `.lha` archives using `c:lha`, writes `ArchiveName.txt` markers, and optionally replaces drawer icons
+- Caches extracted-game state in `.archive_index` files to avoid expensive AmigaOS filesystem scans
+
+**This is a pure CLI tool — there is no GUI.** Do not introduce ReAction/GadTools code.
+
+Target: **AmigaOS 3.0+**, compiled with **VBCC v0.9x (`+aos68k`)**, CPU **68000+**, Roadshow TCP/IP stack required at runtime.
 
 ---
 
 ## Project Structure
 
 ```
-amiga-base/
+WHDDownloader/
 ├── Makefile
 ├── src/
-│   ├── main.c                  <- entry point, ReAction skeleton
-│   ├── console_output.h        <- conditional printf macros
-│   ├── platform/
-│   │   ├── platform.h          <- amiga_malloc/free macros + AMIGA_APP_NAME
-│   │   ├── platform.c          <- memory tracking implementation
-│   │   ├── amiga_headers.h     <- all Amiga system includes (guarded)
-│   │   └── platform_types.h    <- platform_bptr type abstraction
-│   └── log/
-│       ├── log.h               <- LogCategory enum, log_* macros
-│       └── log.c               <- logging implementation
-├── build/amiga/                <- compiler output (gitignored)
-└── Bin/Amiga/                  <- final executables (gitignored)
+│   ├── main.c                      <- entry point, CLI parsing, 5-pack download orchestration
+│   ├── main.h                      <- whdload_pack_def + download_option structs
+│   ├── ini_parser.c/h              <- WHDDownloader.ini loader (8+ config keys)
+│   ├── gamefile_parser.c/h         <- archive filename → game_metadata parser
+│   ├── utilities.c/h               <- string/file helpers, Workbench version detection
+│   ├── cli_utilities.c/h           <- console cursor/size detection
+│   ├── tag_text.c/h                <- formatted text builders with ANSI colours
+│   ├── linecounter.c/h             <- fast buffered line counter (8 KB reads, MEMF_FAST)
+│   ├── icon_unsnapshot.c/h         <- clears saved icon X/Y positions
+│   ├── console_output.h            <- conditional printf macros (zero overhead in release)
+│   ├── download/
+│   │   ├── amiga_download.h        <- public HTTP download API (init/download/cleanup)
+│   │   ├── http_download.c/h       <- HTTP/1.0 protocol, progress display
+│   │   ├── download_lib.c          <- core state machine, socket/tag management
+│   │   ├── file_crc.c/h            <- CRC32 verification
+│   │   ├── timer_shared.c/h        <- speed tracking
+│   │   └── display_message.c/h     <- progress output
+│   ├── extract/
+│   │   └── extract.c/h             <- LHA dispatch, ArchiveName.txt marker, .archive_index cache
+│   ├── log/
+│   │   ├── log.h                   <- LogCategory enum, log_* macros
+│   │   └── log.c                   <- logging implementation
+│   └── platform/
+│       ├── platform.h              <- amiga_malloc/free macros + AMIGA_APP_NAME
+│       ├── platform.c              <- memory tracking + OOM emergency handler
+│       ├── amiga_headers.h         <- all Amiga system includes (guarded)
+│       └── platform_types.h        <- platform_bptr type abstraction
+├── build/amiga/                    <- compiler output (gitignored)
+├── Bin/Amiga/WHDDownloader         <- final binary (gitignored)
+├── Bin/Amiga/GameFiles/            <- downloaded .lha archives and extracted games
+├── Bin/Amiga/temp/                 <- index.html, ZIP files, DAT/xml work area
+├── Bin/Amiga/icons/                <- letter icon templates (A.info … Z.info)
+└── docs/                           <- design plans, .ini sample, ReAction tips
 ```
 
 ---
@@ -39,144 +65,147 @@ amiga-base/
 # Standard release build
 make
 
-# With console window (debug)
+# With console window (debug/development)
 make CONSOLE=1
 
 # With memory leak tracking
 make MEMTRACK=1
 
-# Both
+# Both (recommended for first build of new modules)
 make CONSOLE=1 MEMTRACK=1
 
-# Set your app name (overrides AMIGA_APP_NAME default)
-make APP_NAME=MyTool PROJECT=MyTool
+# Link with -lauto (default); isolate startup crash: AUTO=0
+make AUTO=0
 
 # Clean
 make clean
 ```
 
-Build output: `Bin/Amiga/<PROJECT>`  
+Build output: `Bin/Amiga/WHDDownloader`  
 Log output at runtime: `PROGDIR:logs/`
 
----
+**Note:** VBCC on Windows strips quotes from `-D` string values on the command line, so `AMIGA_APP_NAME` cannot be set via a Makefile `-D` flag. Edit `src/platform/platform.h` directly.
 
-## Changing the App Name
-
-Edit `src/platform/platform.h` line ~24:
-
-```c
-#ifndef AMIGA_APP_NAME
-    #define AMIGA_APP_NAME "MyTool"
-#endif
-```
-
-Also edit the top of `Makefile` to set the output binary name:
-
-```makefile
-APP_NAME = MyTool   /* informational only - does NOT set AMIGA_APP_NAME */
-PROJECT  = MyTool
-```
-
-`AMIGA_APP_NAME` appears in:
-- The window title (`WA_Title`)
-- The OOM emergency requester dialog
-
-**Note:** VBCC on Windows strips quotes from `-D` string values on the command line,
-so `AMIGA_APP_NAME` cannot be set via a Makefile `-D` flag. Edit `platform.h` directly.
+Adding a new `.c` module requires:
+1. Adding `src/<file>.c` to `SRCS` and `build/amiga/<file>.o` to `OBJS` in `Makefile`
+2. If in a subdirectory, adding `build/amiga/<subdir>` to the `directories` target
+3. Including `platform/platform.h` in the new file (required for `amiga_malloc`/`amiga_free`)
 
 ---
 
-## ⚠️ GUI Framework: ReAction (Workbench 3.2+)
+## Data Flow
 
-All GUI code uses **ReAction** classes. Never use GadTools.
+### Macro summary
 
-### Required libraries (opened in `main.c`)
-
-| Library | Class getter |
-|---------|-------------|
-| `window.class` | `WINDOW_GetClass()` |
-| `gadgets/layout.gadget` | `LAYOUT_GetClass()` |
-| `gadgets/button.gadget` | `BUTTON_GetClass()` |
-
-### Core pattern
-
-```c
-/* Create objects */
-Object *btn = NewObject(ButtonClass, NULL,
-    GA_ID,        MY_GADGET_ID,
-    GA_Text,      "Click Me",
-    GA_RelVerify, TRUE,
-    TAG_DONE);
-
-Object *layout = NewObject(LayoutClass, NULL,
-    LAYOUT_Orientation, LAYOUT_ORIENT_VERT,
-    LAYOUT_SpaceOuter,  TRUE,
-    LAYOUT_AddChild,    btn,
-    TAG_DONE);
-
-Object *win = NewObject(WindowClass, NULL,
-    WA_Title,        AMIGA_APP_NAME,
-    WA_CloseGadget,  TRUE,
-    WINDOW_Position, WPOS_CENTERSCREEN,
-    WINDOW_Layout,   layout,
-    TAG_DONE);
-
-/* Open */
-struct Window *w = (struct Window *)RA_OpenWindow(win);
-
-/* Event loop */
-while ((result = RA_HandleInput(win, &code)) != WMHI_LASTMSG) {
-    switch (result & WMHI_CLASSMASK) {
-        case WMHI_CLOSEWINDOW: done = TRUE; break;
-        case WMHI_GADGETUP:
-            switch (result & WMHI_GADGETMASK) {
-                case MY_GADGET_ID: /* handle */ break;
-            }
-            break;
-    }
-}
-
-/* ONLY dispose top-level object - children disposed automatically */
-DisposeObject(win);
+```
+1. Download index.html → parse HTML links → filter by HTML_LINK_PREFIX_FILTER / CONTENT_FILTER
+2. Download matching .zip packs → temp/Zip files/
+3. Extract XML DAT files from ZIPs → temp/Dat files/<filter>(<date>).xml
+4. Parse <rom name="..."> entries → apply skip filters → write .txt list
+5. For each ROM name: check .archive_index cache → if absent, wget → GameFiles/<pack>/<letter>/<rom>
+6. Extract .lha via c:lha → write ArchiveName.txt marker → update .archive_index → optionally replace icon
 ```
 
-### CRITICAL cleanup rule
+### 5 Pack definitions (`whdload_pack_def` array in `main.h`)
 
-**Never manually dispose child objects.** `DisposeObject(window_obj)` disposes the entire tree.
+| Index | Name | Local dir | DAT filter |
+|-------|------|-----------|------------|
+| 0 | Demos Beta | `GameFiles/Demos Beta/` | `Demos-Beta(` |
+| 1 | Demos | `GameFiles/Demos/` | `Demos(` |
+| 2 | Games Beta | `GameFiles/Games Beta/` | `Games-Beta` |
+| 3 | Games | `GameFiles/Games/` | `Games(` |
+| 4 | Magazines | `GameFiles/Magazines/` | `Magazines` |
 
 ---
 
-## Memory System
+## CLI Arguments
 
-### API
-
-| Macro / Function | Purpose |
-|-----------------|---------|
-| `amiga_malloc(size)` | Allocate memory (tracked when `MEMTRACK=1`) |
-| `amiga_free(ptr)` | Free memory |
-| `amiga_strdup(str)` | Duplicate a string |
-| `amiga_memory_init()` | Call once at startup (no-op in release) |
-| `amiga_memory_report()` | Print leak report to `memory_*.log` (no-op in release) |
-| `amiga_memory_suspend_logging()` | Silence memory log during bulk ops |
-| `amiga_memory_resume_logging()` | Re-enable memory log |
-
-### Fast RAM
-
-On Amiga, `amiga_malloc()` uses `AllocVec(size, MEMF_ANY | MEMF_CLEAR)` which prefers Fast RAM automatically — up to **15x faster** than Chip RAM on expanded systems.
-
-### Emergency OOM handler
-
-`amiga_memory_init()` pre-allocates a 1KB Chip RAM buffer and opens `RAM:CRITICAL_FAILURE.log`. If the system runs out of memory an `EasyRequest` dialog appears with `AMIGA_APP_NAME` in the title before the program exits with code 20 (`RETURN_FAIL`).
-
-### Release vs debug builds
-
-```c
-/* MEMTRACK=0 (default, release) - these expand to nothing */
-amiga_memory_init();       /* -> ((void)0) */
-amiga_memory_report();     /* -> ((void)0) */
-amiga_malloc(128);         /* -> malloc(128) */
-amiga_free(ptr);           /* -> free(ptr) */
 ```
+HELP                 Show help and exit
+DOWNLOAD             Download Games pack
+DEMO                 Download Demos pack
+DEMOBETA             Download Demos Beta pack
+GAME                 Download Games pack (alias)
+GAMEBETA             Download Games Beta pack
+MAGAZINE             Download Magazines pack
+DOWNLOADALL          Download all packs
+DATONLY              DAT files only (no ROM downloads)
+NOEXTRACT            Skip extraction after download
+EXTRACTTO=<path>     Extract to alternate path
+KEEPARCHIVES         Do not delete .lha after extraction
+DELETEARCHIVES       Delete .lha after extraction
+EXTRACTONLY          Extract already-downloaded archives only
+FORCEEXTRACT         Re-extract even if ArchiveName.txt present
+NODOWNLOADSKIP       Download even if already extracted
+SKIP_AGA             Filter: skip AGA games
+SKIP_CD              Filter: skip CD32/CDTV
+SKIP_NTSC            Filter: skip NTSC games
+SKIP_NONENG          Filter: skip non-English versions
+NOICONS              Skip icon replacement
+NOSKIP               Show all skip messages
+QUIET                Silent wget output
+```
+
+---
+
+## INI File Format (`PROGDIR:WHDDownloader.ini`)
+
+INI is optional; all keys override compiled defaults. See `docs/WHDDownloader.ini.sample`.
+
+```ini
+[global]
+download_website=http://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20Packs/
+extract_archives=true
+skip_existing_extractions=true
+skip_download_if_extracted=true
+extract_path=                     ; empty = extract in place
+delete_archives_after_extract=true
+use_custom_icons=true
+unsnapshot_icons=true
+
+[filters]
+skip_aga=false
+skip_cd=false
+skip_ntsc=false
+skip_non_english=false
+
+[pack.games]
+enabled=true
+display_name=Games
+download_url=http://...
+local_dir=Games/
+filter_dat=Games(
+filter_zip=Games(
+```
+
+Boolean values accept: `true`/`false`, `yes`/`no`, `1`/`0`.
+
+---
+
+## Archive Index Cache (`.archive_index`)
+
+Avoids expensive `ExNext` + `ArchiveName.txt` reads on slow Amiga storage.
+
+**Location:** `GameFiles/<pack>/<letter>/.archive_index`  
+**Format:** TAB-separated, two columns per line:
+
+```
+A10TankKiller_v2.0_2Disk.lha<TAB>A10TankKiller2Disk
+Academy_v1.2.lha<TAB>Academy
+```
+
+**Lifecycle:** Loaded at startup → queried during extraction → updated in-memory on success → flushed to disk by `extract_index_flush()` in `do_shutdown()` → stale entries (deleted folders) auto-pruned on flush.
+
+## Marker File (`ArchiveName.txt`)
+
+Written inside each extracted game folder:
+
+```
+Line 1: Category display name  (e.g., "Games")
+Line 2: Exact archive filename (e.g., "Academy_v1.2.lha")
+```
+
+If line 2 matches the current archive filename, extraction is skipped (unless `FORCEEXTRACT`).
 
 ---
 
@@ -186,111 +215,67 @@ amiga_free(ptr);           /* -> free(ptr) */
 
 ```c
 typedef enum {
-    LOG_GENERAL,   /* General program flow                */
-    LOG_MEMORY,    /* Memory allocs/frees (high-frequency) */
-    LOG_APP,       /* Application-specific (add more here) */
-    LOG_ERRORS,    /* Auto-receives copies of all errors   */
+    LOG_GENERAL,    /* Startup, shutdown, config, main flow */
+    LOG_MEMORY,     /* Allocs/frees (high-frequency, often disabled) */
+    LOG_APP,        /* App-specific (available for new use) */
+    LOG_DOWNLOAD,   /* HTTP operations, FTP link parsing */
+    LOG_PARSER,     /* DAT parsing, metadata extraction */
+    LOG_ERRORS,     /* All errors auto-aggregated here */
     LOG_CATEGORY_COUNT
 } LogCategory;
 ```
 
-**Adding categories for your project:**
-1. Add new entries to the enum above `LOG_ERRORS` in `log.h`
-2. Add matching strings to `g_categoryNames[]` in `log.c` in the same position
-3. Update `LOG_CATEGORY_COUNT` — it stays last automatically
+**Adding a new category:**
+1. Insert above `LOG_ERRORS` in `log.h`
+2. Add matching string to `g_categoryNames[]` in `log.c` at the same index
+3. `LOG_CATEGORY_COUNT` stays last automatically
 
 ### Log macros
 
 ```c
-log_debug(LOG_GENERAL,  "Scanning: %s\n", path);
-log_info(LOG_APP,       "Window opened\n");
-log_warning(LOG_APP,    "File not found: %s\n", name);
-log_error(LOG_GENERAL,  "Critical failure: %ld\n", (long)ioErr);
+log_debug(LOG_DOWNLOAD, "Connecting: %s\n", url);
+log_info(LOG_GENERAL,   "Pack loaded: %s\n", pack->full_text_name_of_pack);
+log_warning(LOG_PARSER, "Unknown token: %s\n", token);
+log_error(LOG_GENERAL,  "wget failed: %ld\n", (long)rc);
 ```
 
-### Log files (written to `PROGDIR:logs/`)
-
-```
-general_YYYY-MM-DD_HH-MM-SS.log
-memory_YYYY-MM-DD_HH-MM-SS.log
-app_YYYY-MM-DD_HH-MM-SS.log
-errors_YYYY-MM-DD_HH-MM-SS.log  <- all ERROR-level messages from every category
-```
+Log files written to `PROGDIR:logs/<category>_YYYY-MM-DD_HH-MM-SS.log`.
 
 ### Initialisation / shutdown
 
 ```c
-/* In main(), before any log_* calls */
-initialize_log_system(FALSE);   /* FALSE = keep old logs */
-
-/* At end of main(), after amiga_memory_report() */
+initialize_log_system(TRUE);   /* TRUE = delete old logs */
+/* ... */
 shutdown_log_system();
 ```
 
-### Runtime control
-
-```c
-set_global_log_level(LOG_LEVEL_INFO);         /* suppress DEBUG globally */
-enable_log_category(LOG_MEMORY, FALSE);        /* silence memory category */
-set_memory_logging_enabled(TRUE);              /* re-enable + force DEBUG level */
-```
-
 ---
 
-## Language and Coding Standards
+## Memory System
 
-- **Compiler**: VBCC v0.9x with `+aos68k` configuration
-- **Standard**: C99 (`-c99` flag) — `//` comments and inline declarations are OK
-- **Naming**: `snake_case` for all functions, variables, types
-- **Prefixes**: `amiga_` for library functions; `AMIGA_` for macros
-- **Booleans**: Use AmigaOS `BOOL`, `TRUE`, `FALSE` (not C99 `bool`)
-- **Strings**: ASCII only — no Unicode. Amiga Topaz font is ASCII-only.
-- **Indentation**: 4 spaces (no tabs)
+| Macro / Function | Purpose |
+|-----------------|---------|
+| `amiga_malloc(size)` | Allocate (tracked when `MEMTRACK=1`) |
+| `amiga_free(ptr)` | Free |
+| `amiga_strdup(str)` | Duplicate string |
+| `amiga_memory_init()` | Call once at startup (no-op in release) |
+| `amiga_memory_report()` | Print leak report to `memory_*.log` (no-op in release) |
+| `amiga_memory_suspend_logging()` | Silence during bulk ops |
+| `amiga_memory_resume_logging()` | Re-enable |
 
-### AmigaOS type reference
+`amiga_malloc()` uses `AllocVec(size, MEMF_ANY | MEMF_CLEAR)` — prefers Fast RAM automatically.
 
-```c
-BOOL    /* 2-byte boolean */
-STRPTR  /* char *         */
-BPTR    /* DOS file/lock  */
-LONG    /* 32-bit signed  */
-ULONG   /* 32-bit unsigned */
-WORD    /* 16-bit signed  */
-UWORD   /* 16-bit unsigned */
-```
+### Memory management rules
 
-### Structure field ordering (68k alignment)
-
-Group fields by size to minimise padding:
-```c
-typedef struct {
-    /* 4-byte fields first */
-    ULONG  some_value;
-    char  *some_string;
-    Object *some_object;
-    /* 2-byte fields last (BOOL = 2 bytes on Amiga) */
-    BOOL   is_active;
-    BOOL   is_valid;
-} MyStruct;
-```
-
-### 68000 stack frame limit
-
-VBCC allocates locals for **all** `case` and `if` branches simultaneously at function entry. Keep any single function's local variable frame under ~32 KB. Never put two large structs (> ~4 KB each) on the stack in the same function — heap-allocate with `amiga_malloc()` instead.
-
----
-
-## Memory Management Rules
-
-1. **Always use `amiga_malloc`/`amiga_free`** for general heap allocations in production code
-2. **Always check for NULL** after allocation
-3. **Free in reverse allocation order** where practical
-4. Match correctly:
+1. Always use `amiga_malloc`/`amiga_free` for heap allocations
+2. Always check for `NULL` after allocation
+3. Free in reverse allocation order where practical
+4. Match allocator to deallocator:
    - `amiga_malloc` → `amiga_free`
    - `AllocDosObject` → `FreeDosObject`
-   - `AllocVec` → `FreeVec`
-   - `NewObject` → `DisposeObject` (disposes children)
+   - `AllocVec` → `FreeVec` (not `free()`)
    - `Lock` → `UnLock`
+5. In `DEBUG_MEMORY_TRACKING` builds, untracked frees **must** use `FreeVec`, not `free()`
 
 ---
 
@@ -309,51 +294,81 @@ All macros expand to `((void)0)` when `CONSOLE=0` — zero overhead in release b
 
 ---
 
+## Language and Coding Standards
+
+- **Compiler**: VBCC v0.9x with `+aos68k` configuration
+- **Standard**: C99 (`-c99` flag) — `//` comments and inline declarations are OK
+- **Naming**: `snake_case` for all functions, variables, types
+- **Prefixes**: `amiga_` for library functions; `AMIGA_` for macros
+- **Booleans**: `BOOL`, `TRUE`, `FALSE` — not C99 `bool`
+- **Strings**: ASCII only — no Unicode. Amiga Topaz font is ASCII-only.
+- **Indentation**: 4 spaces (no tabs)
+
+### AmigaOS type reference
+
+```c
+BOOL    /* 2-byte boolean          */
+STRPTR  /* char *                  */
+BPTR    /* DOS file/lock           */
+LONG    /* 32-bit signed           */
+ULONG   /* 32-bit unsigned         */
+WORD    /* 16-bit signed           */
+UWORD   /* 16-bit unsigned         */
+```
+
+### Structure field ordering (68k alignment)
+
+Group fields by size — largest first — to minimise padding:
+
+```c
+typedef struct {
+    ULONG  count;         /* 4 bytes */
+    char  *name;          /* 4 bytes */
+    BOOL   is_valid;      /* 2 bytes */
+} MyStruct;
+```
+
+### 68000 stack frame limit
+
+VBCC allocates locals for **all** `case` / `if` branches simultaneously at function entry. Keep any function's local frame under ~32 KB. Never put two large structs (>4 KB each) in the same function — heap-allocate instead.
+
+---
+
+## Shutdown Sequence (`do_shutdown()` in `main.c`)
+
+Every exit path must call `do_shutdown()`:
+
+1. `ad_cleanup_download_lib()` — close sockets/timer
+2. `extract_index_flush()` — flush `.archive_index` cache to disk
+3. `ini_parser_cleanup_overrides()` — free INI allocations
+4. `amiga_memory_report()` — leak report (no-op in release)
+5. `shutdown_log_system()` — close all log files
+
+---
+
+## Pitfalls and Known Quirks
+
+- **No GUI** — this is a pure CLI tool. Never add ReAction/GadTools code.
+- **VBCC `-D` string stripping** — cannot set string macros via `make -DFOO="bar"` on Windows; edit `platform.h` directly.
+- **`FIBF_HIDDEN` guard** — some NDK header sets don't define it; wrap hidden-file calls in `#ifdef FIBF_HIDDEN`.
+- **Varargs/format mismatches** — on 68k these corrupt the stack but may only crash at program exit. Always match `%ld` with `(long)` cast for `LONG` values in `printf`/`log_*`.
+- **New modules** must `#include "platform/platform.h"` — otherwise VBCC emits implicit declaration warnings for `amiga_malloc`/`amiga_free`.
+- **Archive index is critical for performance** — do not bypass it; filesystem scans on SCSI/IDE are extremely slow on classic hardware.
+- **Case-insensitive filesystem** — AmigaOS is case-insensitive but case-preserving; use exact case when constructing paths programmatically.
+
+---
+
 ## Development Environment
 
 - **Host**: Windows PC
-- **Compiler**: VBCC cross-compiler (`vc`)
-- **SDK**: NDK 3.2 (includes ReAction classes)
+- **Compiler**: VBCC cross-compiler (`vc`) with NDK 3.2 + Roadshow SDK
 - **Emulator**: WinUAE — shared drive maps `build\amiga` into Amiga filesystem
-- **Target OS**: Workbench 3.2+
+- **Target OS**: AmigaOS 3.0+, Roadshow TCP/IP required at runtime
 
 ### Build and test cycle
 
 1. Edit source on PC in VS Code
-2. `make` in PowerShell terminal
+2. `make CONSOLE=1` in PowerShell terminal
 3. Binary auto-appears in WinUAE shared drive
-4. Run in WinUAE, check `PROGDIR:logs/`
-5. For leaks: `make MEMTRACK=1`, check `memory_*.log`
-
----
-
-## Checklist: Starting a New Project from amiga-base
-
-- [ ] Edit `APP_NAME` and `PROJECT` in `Makefile`
-- [ ] Rename/replace `main.c` window title and gadget IDs
-- [ ] Add project-specific log categories to `LOG_CATEGORY_COUNT` in `log.h` + `log.c`  
-- [ ] Add your source files to `SRCS` and `OBJS` in `Makefile`
-- [ ] Add any new `build/amiga/<subdir>` entries to the `directories` target
-- [ ] `make CONSOLE=1 MEMTRACK=1` for first build to verify no leaks
-- [ ] Verify in WinUAE before declaring done
-
----
-
-## ReAction Gadget Quick Reference
-
-| Class | Purpose | Key Tags |
-|-------|---------|----------|
-| `button.gadget` | Push / toggle buttons | `GA_Text`, `GA_RelVerify` |
-| `checkbox.gadget` | Boolean toggle | `GA_Selected`, `GA_Text` |
-| `string.gadget` | Text input | `STRINGA_TextVal`, `STRINGA_MaxChars` |
-| `integer.gadget` | Numeric input | `INTEGER_Number`, `INTEGER_Minimum` |
-| `chooser.gadget` | Dropdown / cycle | `CHOOSER_Labels`, `CHOOSER_Selected` |
-| `listbrowser.gadget` | Scrollable list | `LISTBROWSER_Labels`, `LISTBROWSER_Selected` |
-| `layout.gadget` | Automatic arrangement | `LAYOUT_Orientation`, `LAYOUT_AddChild` |
-| `requester.class` | Modal dialog | `REQ_Type`, `REQ_BodyText`, `REQ_GadgetText` |
-
-Layout orientations: `LAYOUT_ORIENT_HORIZ`, `LAYOUT_ORIENT_VERT`
-
-AutoDocs for all classes are in `docs/AutoDocs/` from the 3.2 NDK.
-
-The document docs\Reaction_tips.md contains common patterns and gotchas for ReAction development.
+4. Run in WinUAE, check output + `PROGDIR:logs/`
+5. For leak checks: `make MEMTRACK=1`, check `memory_*.log`

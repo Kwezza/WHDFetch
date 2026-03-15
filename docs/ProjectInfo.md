@@ -10,6 +10,10 @@ This document summarizes the features implemented during this chat session.
 - Added `ArchiveName.txt` metadata writing after successful extraction.
 - Added skip-if-already-extracted logic before extraction.
 - Added pre-download skip logic using existing extraction markers to avoid slow re-downloads.
+- Added `.archive_index` per-letter cache files to replace expensive full directory scans.
+- Added automatic migration path that can build `.archive_index` from existing `ArchiveName.txt` markers.
+- Added stale-entry handling for `.archive_index` when users manually delete extracted folders.
+- Added cache lifecycle hooks: runtime update after successful extraction and flush on shutdown.
 - Added force/override flags for both download and extraction skip systems.
 - Updated help text, sample INI, and README documentation.
 
@@ -19,6 +23,9 @@ This document summarizes the features implemented during this chat session.
 2. If extraction is enabled, archive extraction is attempted.
 3. If marker-based extraction skip is enabled and marker matches, extraction is skipped.
 4. If pre-download marker skip is enabled and marker matches, download is skipped before `wget` runs.
+5. For heuristic misses, pre-download skip now checks `.archive_index` first (fast lookup) instead of scanning every subfolder.
+6. If index lookup points to a folder that no longer exists, the stale index entry is removed and normal download/extract continues.
+7. After successful extraction and metadata write, `.archive_index` is updated in memory and flushed safely during shutdown.
 
 ## Marker File Contract
 
@@ -34,6 +41,42 @@ File format:
 Matching rule:
 
 - Exact case-sensitive match against line 2.
+
+## Archive Index Contract (`.archive_index`)
+
+Purpose:
+
+- Accelerate pre-download skip checks when archive filename heuristics do not match the real extracted folder name.
+- Avoid repeated `ExNext()` + `ArchiveName.txt` reads across large letter folders on classic Amiga storage.
+
+Path format:
+
+- `<target>/<pack>/<letter>/.archive_index`
+
+Examples:
+
+- `GameFiles/Games/A/.archive_index`
+- `Games:/Games/A/.archive_index` (when `EXTRACTTO` is active)
+
+File format:
+
+- One entry per line.
+- Two TAB-separated fields:
+   - Column 1: exact archive filename (for example `AcademyAGA_v1.0.lha`)
+   - Column 2: real extracted folder name (for example `Academy`)
+
+Lookup rule:
+
+- Exact case-sensitive match on column 1.
+
+Write/update rule:
+
+- If archive already exists in index: update folder field.
+- If archive is new: append entry.
+
+Stale entry rule:
+
+- If index maps to a folder that no longer exists, entry is removed and file is corrected on flush.
 
 ## CLI Options Added/Active
 
@@ -162,8 +205,61 @@ Pre-download skip (before `wget`):
 
 - Uses same resolved target directory logic.
 - Tries heuristic folder marker first.
-- Falls back to scanning child folders and reading `ArchiveName.txt` markers.
+- Tier 2 now uses `.archive_index` lookup first (fast path).
+- If `.archive_index` cannot be loaded, fallback scan still uses child folders + `ArchiveName.txt` markers.
 - Skips download on exact marker match unless `FORCEDOWNLOAD` is set or `NODOWNLOADSKIP` is used.
+
+### Why this was changed
+
+- The old Tier 2 fallback scanned all subfolders in a letter directory whenever the heuristic failed.
+- Heuristic misses are common (archive filename and folder name often differ), so full scans happened frequently.
+- On Amiga HDD/CF media, repeated directory traversal and file opens are expensive and significantly slow full pack checks.
+- `.archive_index` turns this into one file load per letter and then in-memory lookups, while keeping safe fallback behavior.
+
+## Archive Index Lifecycle
+
+Load path:
+
+- Called during pre-download skip checks after heuristic mismatch.
+- If cache for target letter directory is already loaded, reuse it.
+- If no index file exists, migration build can scan existing `ArchiveName.txt` markers and create index data.
+
+Update path:
+
+- Called after successful extraction and successful `ArchiveName.txt` write.
+- Updates in-memory cache immediately so subsequent checks in same run benefit without extra disk I/O.
+
+Flush path:
+
+- Called on shutdown.
+- Persists dirty cache to `.archive_index`.
+- Designed to keep extraction flow non-fatal: failure to write index logs a warning but does not invalidate extraction result.
+
+## Reliability and Recovery Notes
+
+- `.archive_index` is an optimization layer; `ArchiveName.txt` remains the authoritative compatibility marker.
+- If index file is missing/corrupt/unreadable, runtime falls back safely (scan path or normal download/extract behavior).
+- Malformed index lines are skipped defensively.
+- Manual folder deletion is handled by stale-entry removal when folder verification fails.
+- Feature is transparent with and without `EXTRACTTO` because target directory resolution is shared.
+
+## Developer Notes (for future manual writing)
+
+Code integration points:
+
+- `extract_is_archive_already_extracted()`:
+   - Tier 1 heuristic unchanged.
+   - Tier 2 now index-first with folder existence verification and stale cleanup.
+- `extract_process_downloaded_archive()`:
+   - Calls index update after metadata write succeeds.
+- `do_shutdown()`:
+   - Flushes extract index cache before INI cleanup/log shutdown.
+
+Design intent:
+
+- Keep correctness equivalent to prior logic.
+- Improve speed on large libraries.
+- Ensure failures in index handling never block core download/extract operations.
 
 ## Startup Validation Added
 

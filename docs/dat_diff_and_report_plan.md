@@ -3,8 +3,33 @@
 ## TL;DR
 When Retroplay releases an updated pack, **diff the old and new .txt DAT files** to identify only the added/removed entries. Download/extract only the delta instead of checking all ~4000 entries against disk. Generate a human-readable report of what was added. Notify the user when filters eliminate new entries to avoid confusion.
 
+## Prerequisite: Archive Index (COMPLETED)
+
+The `.archive_index` feature has been implemented (see `docs/archive_index_handoff.md`).
+This replaced the expensive Tier 2 directory scan in `extract_is_archive_already_extracted()`
+with a per-letter cached index lookup. Key points relevant to this plan:
+
+- **Tier 2 is now index-first**: `extract_index_load()` / `extract_index_lookup()` provide
+  O(1) per-entry lookups from an in-memory cache, with one file read per letter directory.
+- **`extract_index_update()`** is called after every successful extraction, keeping the
+  index current without extra I/O.
+- **`extract_index_flush()`** is already wired into `do_shutdown()` in `main.c`.
+- **`extract_find_archive_by_scanning_metadata()`** is retained as a fallback only when
+  index loading fails.
+- The index also provides archive→folder name resolution that the report module can use
+  (via `extract_index_lookup()`) without hitting disk.
+
 ## Problem
-Currently `download_roms_from_file()` reads ALL entries (~4000 for Games) and calls `execute_wget_download_command()` for each, which does a filesystem existence check per entry. On classic Amiga hardware with mechanical HDD, this is thousands of slow I/O operations even when nothing is new.
+
+Currently `download_roms_from_file()` reads ALL entries (~4000 for Games) and calls
+`execute_wget_download_command()` for each. Each call performs:
+1. A filesystem existence check for the `.lha` archive file.
+2. An `extract_is_archive_already_extracted()` call (now fast thanks to the archive index).
+
+While the archive index eliminated the expensive Tier 2 directory scan, the sheer volume
+of ~4000 iterations still involves ~4000 `does_file_or_folder_exist()` checks and ~4000
+index lookups per run — plus console output overhead — even when nothing is new. On classic
+Amiga hardware with a mechanical HDD, this is still noticeably slow.
 
 ## Key Discovery
 Old .txt DAT files **already survive across runs** (only ZIPs and XMLs are cleaned up). So when `Games(2026-03-07).txt` is created, `Games(2025-09-20).txt` still exists — the diff is free.
@@ -65,6 +90,7 @@ Games update: 15 new archives found, 3 filtered (AGA), 12 downloaded.
 5. **Implement `download_roms_from_diff()`** — *depends on 4*
    - Similar to `download_roms_from_file()` but iterates the diff ADDED entries only
    - Calls `execute_wget_download_command()` for each (reuses existing download logic)
+   - Each call still benefits from the archive index for fast skip checks
    - Much shorter loop: typically 10-50 entries vs 4000
 
 6. **Apply filters to diff and report transparency** — *depends on 4*
@@ -91,6 +117,8 @@ Games update: 15 new archives found, 3 filtered (AGA), 12 downloaded.
 9. **Record entries during download** — *depends on 5 and 8*
    - In `download_roms_from_diff()` (and `download_roms_from_file()` for first-run): after successful download, call `report_add_entry()` with filename and pack name
    - Parse metadata via existing `extract_game_info_from_filename()` / `game_metadata` struct
+   - For folder name resolution in the report, `extract_index_lookup()` can provide the
+     actual extracted folder name without disk I/O (populated during extraction)
 
 10. **Write report file** — *depends on 8-9*
     - `report_write()` creates `PROGDIR:updates/updates_YYYY-MM-DD_HH-MM-SS.txt`
@@ -120,14 +148,17 @@ Games update: 15 new archives found, 3 filtered (AGA), 12 downloaded.
     - `report_init()` early in main()
     - Diff logic between DAT processing and download phases
     - `report_write()` after download loops
-    - `report_cleanup()` in `do_shutdown()`
+    - `report_cleanup()` in `do_shutdown()` (before `extract_index_flush()` which is
+      already present)
 
 ---
 
 ## Relevant files
-- `src/main.c` — `download_roms_from_file()` (add diff-aware alternative), `process_and_archive_WHDLoadDat_Files()` (diff entry point), end-of-run summary, `do_shutdown()`
+- `src/main.c` — `download_roms_from_file()` (add diff-aware alternative), `process_and_archive_WHDLoadDat_Files()` (diff entry point), end-of-run summary, `do_shutdown()` (already has `extract_index_flush()`)
 - `src/main.h` — `whdload_pack_def` struct (reference for pack context)
 - `src/gamefile_parser.h` — `game_metadata` struct, `extract_game_info_from_filename()` for report metadata
+- `src/extract/extract.h` — archive index public API (`extract_index_lookup()` etc.) — available for report folder-name resolution
+- `src/extract/extract.c` — archive index implementation (completed, see `docs/archive_index_handoff.md`)
 - **NEW** `src/dat_diff.h` / `src/dat_diff.c` — diff module
 - **NEW** `src/report.h` / `src/report.c` — report module
 - `Makefile` — add new source/object files
@@ -155,12 +186,14 @@ Games update: 15 new archives found, 3 filtered (AGA), 12 downloaded.
 
 ## Decisions
 - **Diff algorithm**: Merge-join on sorted files, O(n+m), constant memory (2 line buffers). Files are already alphabetically sorted.
-- **First-run fallback**: No old .txt → use existing full-scan logic unchanged.
+- **First-run fallback**: No old .txt → use existing full-scan logic unchanged. Archive index makes even the full-scan path fast for skip checks.
 - **Filter transparency**: Console explicitly reports when filters eliminate new entries.
 - **Old .txt cleanup**: Deleted after successful diff, keeping directory clean.
 - **Report location**: `PROGDIR:updates/` with timestamped filenames, preserved across runs.
 - **"Updated" entries**: For now all are NEW. UPDATED status reserved for future version-upgrade feature.
+- **Archive index integration**: The diff does NOT interact with `.archive_index` directly. The index is consumed indirectly through `extract_is_archive_already_extracted()` and `extract_index_lookup()` which are called from the download/report paths.
 
 ## Further Considerations
 1. **DAT file sort verification**: The plan assumes .txt files are sorted. If Retroplay ever changes XML ordering, the merge-join would produce wrong results. Mitigation: add a quick is-sorted check at the start of diff; if unsorted, fall back to loading into memory and sorting. Recommend: verify with current files first, add the check only if needed.
-2. **Removed entries**: The diff detects archives REMOVED from a pack (in old, not in new). Currently not acted on. Future option: warn user about removed entries, or auto-clean extracted folders. Recommend: log removed entries in the report but don't delete anything.
+2. **Removed entries**: The diff detects archives REMOVED from a pack (in old, not in new). Currently not acted on. Future option: warn user about removed entries, or auto-clean extracted folders. Recommend: log removed entries in the report but don't delete anything. Note: removed entries will leave stale `.archive_index` entries — these are harmless (never queried) and self-correct if the same archive is ever re-added.
+3. **Index cache and letter boundaries in diff mode**: `download_roms_from_diff()` will process entries that may span multiple letters. The archive index cache handles letter transitions automatically (flush + reload on directory change). No special handling needed in the diff download loop — it calls the same `execute_wget_download_command()` which triggers the index through `extract_is_archive_already_extracted()`.

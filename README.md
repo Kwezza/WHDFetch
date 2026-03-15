@@ -1,180 +1,228 @@
-# amiga-base
+# WHDDownloader
 
-Minimal AmigaOS starter project for VBCC / Workbench 3.2+ development.
+AmigaOS CLI tool that automates downloading, extracting, and organising
+[WHDLoad](http://www.whdload.de/) game, demo, and magazine packs from the
+[Retroplay](http://turran.retroplay.org/) FTP site.
 
-Provides out-of-the-box:
-- **Memory tracking** — `amiga_malloc`/`amiga_free` with leak detection (`MEMTRACK=1`)
-- **Multi-category logging** — timestamped log files in `PROGDIR:logs/`
-- **ReAction window skeleton** — a working window that compiles and runs immediately
-- **Conditional printf** — `CONSOLE_*` macros that produce zero overhead in release builds
+Run it from a Shell window on your Amiga (or WinUAE). It handles everything:
+fetching the pack index, downloading only what is new, extracting archives,
+writing skip-markers so already-installed titles are never re-processed, and
+optionally replacing drawer icons.
+
+---
 
 ## Requirements
 
-| Tool | Version |
-|------|---------|
-| VBCC cross-compiler | 0.9x |
-| NDK | 3.2 |
-| Workbench (target) | 3.2+ |
-| CPU (target) | 68000+ |
+| Requirement | Notes |
+|-------------|-------|
+| AmigaOS 3.0+ | 3.1+ recommended |
+| Roadshow TCP/IP stack | `bsdsocket.library v4+` required for HTTP |
+| `c:lha` | Archive extraction |
+| `c:wget` | Individual ROM downloads |
+| Fast RAM | Strongly recommended — tool uses `MEMF_ANY` allocations |
+
+---
 
 ## Quick Start
 
-```powershell
-# 1. Clone
-git clone https://github.com/Kwezza/amiga-base.git
-cd amiga-base
+1. Copy `WHDDownloader` and `WHDDownloader.ini` to a directory on your Amiga
+2. Edit `WHDDownloader.ini` (or use CLI flags — see below)
+3. Open a Shell in that directory and run:
 
-# 2. Set your app name (edit Makefile lines 22-23)
-#    APP_NAME = MyTool
-#    PROJECT  = MyTool
-
-# 3. Build
-make
-
-# 4. Find your binary at Bin/Amiga/<PROJECT>
-#    Copy it to your WinUAE shared drive and run
+```
+WHDDownloader GAME
 ```
 
-## Build Options
+Games will be downloaded to `GameFiles/Games/` organised into letter sub-folders.
+
+---
+
+## CLI Arguments
+
+### What to download
+
+| Argument | Action |
+|----------|--------|
+| `GAME` / `DOWNLOAD` | Download Games pack |
+| `GAMEBETA` | Download Games Beta pack |
+| `DEMO` | Download Demos pack |
+| `DEMOBETA` | Download Demos Beta pack |
+| `MAGAZINE` | Download Magazines pack |
+| `DOWNLOADALL` | Download all five packs |
+| `DATONLY` | Fetch DAT files only — no ROM downloads |
+| `HELP` | Show help and exit |
+
+### Extraction control
+
+| Argument | Action |
+|----------|--------|
+| `NOEXTRACT` | Download archives but do not extract them |
+| `EXTRACTONLY` | Extract already-downloaded archives without downloading anything new |
+| `EXTRACTTO=<path>` | Extract to an alternate path (preserves pack/letter layout) |
+| `KEEPARCHIVES` | Keep `.lha` files after successful extraction |
+| `DELETEARCHIVES` | Delete `.lha` files after successful extraction |
+| `FORCEEXTRACT` | Re-extract even when `ArchiveName.txt` already matches |
+| `FORCEDOWNLOAD` | Re-download even when the title is already extracted |
+| `NODOWNLOADSKIP` | Download even if an extraction marker exists |
+
+### Skip filters
+
+| Argument | Skips |
+|----------|-------|
+| `SKIP_AGA` | AGA-only titles (require A1200/A4000) |
+| `SKIP_CD` | CD32 / CDTV / CDRom titles |
+| `SKIP_NTSC` | NTSC-only releases |
+| `SKIP_NONENG` | Non-English or English-absent releases |
+
+### Output
+
+| Argument | Action |
+|----------|--------|
+| `NOICONS` | Skip icon replacement after extraction |
+| `NOSKIP` | Print a line for every skipped title |
+| `QUIET` | Suppress wget progress output |
+
+---
+
+## INI Configuration
+
+`PROGDIR:WHDDownloader.ini` is optional. When present it overrides built-in defaults.
+CLI arguments always take precedence over INI values.
+
+**Precedence:** built-in defaults → INI → CLI arguments
+
+A fully annotated sample is at `docs/WHDDownloader.ini.sample`.  
+A per-key test checklist is at `docs/ini_runtime_test_matrix.md`.
+
+### `[global]`
+
+```ini
+download_website=http://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20Packs/
+extract_archives=true
+skip_existing_extractions=true
+skip_download_if_extracted=true
+extract_path=                     ; empty = extract in place
+delete_archives_after_extract=true
+use_custom_icons=true
+unsnapshot_icons=true
+```
+
+### `[filters]`
+
+```ini
+skip_aga=false
+skip_cd=false
+skip_ntsc=false
+skip_non_english=false
+```
+
+### `[pack.<type>]`
+
+Types: `games`, `games_beta`, `demos`, `demos_beta`, `magazines`
+
+```ini
+[pack.games]
+enabled=true
+display_name=Games
+download_url=http://...
+local_dir=Games/
+filter_dat=Games(
+filter_zip=Games(
+```
+
+Boolean values accept `true`/`false`, `yes`/`no`, `1`/`0`.
+
+---
+
+## How skip detection works
+
+Before downloading a title, WHDDownloader checks whether it has already been extracted:
+
+1. It looks up the archive filename in the in-memory `.archive_index` cache  
+   (loaded from `GameFiles/<pack>/<letter>/.archive_index` at startup)
+2. If found, it also checks `<game folder>/ArchiveName.txt` — a two-line marker:
+
+```
+Games
+Academy_v1.2.lha
+```
+
+If line 2 is an exact match for the incoming archive filename, the title is skipped.
+
+Use `FORCEEXTRACT` to bypass the extraction skip check.  
+Use `FORCEDOWNLOAD` or `NODOWNLOADSKIP` to bypass the download skip check.
+
+---
+
+## Runtime directory layout
+
+```
+PROGDIR:
+├── WHDDownloader
+├── WHDDownloader.ini
+├── GameFiles/
+│   ├── Games/
+│   │   ├── A/
+│   │   │   ├── .archive_index       (hidden skip cache)
+│   │   │   ├── A.info               (letter drawer icon)
+│   │   │   └── Academy/
+│   │   │       ├── Academy.slave
+│   │   │       ├── Academy.info
+│   │   │       └── ArchiveName.txt
+│   │   └── B/ …
+│   ├── Games Beta/ …
+│   ├── Demos/ …
+│   ├── Demos Beta/ …
+│   └── Magazines/ …
+├── icons/
+│   ├── A.info … Z.info              (letter icon templates)
+│   └── WHD folder.info              (game icon template, optional)
+├── logs/
+│   ├── general_YYYY-MM-DD_HH-MM-SS.log
+│   ├── download_YYYY-MM-DD_HH-MM-SS.log
+│   ├── parser_YYYY-MM-DD_HH-MM-SS.log
+│   └── errors_YYYY-MM-DD_HH-MM-SS.log
+└── temp/
+    ├── index.html
+    ├── Zip files/
+    └── Dat files/
+```
+
+---
+
+## Log files
+
+Logs are written to `PROGDIR:logs/` on every run. The `errors_*.log` file receives a
+copy of every error regardless of which category produced it — check it first when
+diagnosing problems.
+
+---
+
+## Building from source
 
 ```powershell
-make                    # release (no console, no memtrack)
-make CONSOLE=1          # open console window with printf output
-make MEMTRACK=1         # enable allocation/leak tracking
+make                    # release build
+make CONSOLE=1          # with console output (use when debugging)
+make MEMTRACK=1         # with allocation/leak tracking
 make CONSOLE=1 MEMTRACK=1
+make AUTO=0             # omit -lauto (isolates startup crashes)
 make clean
-make help
 ```
 
-## Customising for Your Project
+**Requirements:** VBCC cross-compiler + NDK 3.2 + Roadshow SDK on Windows host.
 
-### 1. App name
-Edit the top two lines of `Makefile`:
-```makefile
-APP_NAME = MyTool
-PROJECT  = MyTool
-```
-`AMIGA_APP_NAME` flows through to the window title and OOM dialog automatically.
+Output binary: `Bin/Amiga/WHDDownloader`
 
-### 2. Add your source files
-Add `.c` files to `SRCS` and matching `.o` entries to `OBJS` in the Makefile.  
-Add build subdirectory creation to the `directories` target.
+---
 
-### 3. Add log categories
-In `src/log/log.h` add new entries **before** `LOG_ERRORS`:
-```c
-typedef enum {
-    LOG_GENERAL,
-    LOG_MEMORY,
-    LOG_APP,
-    LOG_MY_MODULE,   // <- add here
-    LOG_ERRORS,
-    LOG_CATEGORY_COUNT
-} LogCategory;
-```
-In `src/log/log.c` add a matching string to `g_categoryNames[]` at the same index.
+## Documentation
 
-### 4. Add a version string (Amiga `version` command)
-
-To make your binary recognisable by the Amiga shell `version` command, add the following near the top of `src/main.c` (before any functions):
-
-```c
-// #define VERSION_STRING "$VER: MyTool 1.0 (06.03.2026)"
-static const char version_string[] = "$VER: MyTool " MYAPP_VERSION " (" __DATE__ ")";
-const char version[] = MYAPP_VERSION;
-```
-
-- The `$VER:` tag is scanned by the Amiga's `version` command to display name, version number, and build date.
-- Replace `MyTool` with your app name and define `MYAPP_VERSION` (e.g. `"1.0"`) near the top of the file or in a dedicated header.
-- The commented-out `#define` line is a handy reference for the expected format.
-- `__DATE__` is substituted by the compiler at build time (format: `Mmm DD YYYY`); reformat manually if you need the Amiga `DD.MM.YYYY` date style.
-
-### 5. Replace the skeleton window
-`src/main.c` contains a minimal single-window example. Build your own windows alongside it following the patterns in `.github/copilot-instructions.md`.
-
-## Log Files
-
-At runtime, logs are written to `PROGDIR:logs/`:
-
-```
-general_YYYY-MM-DD_HH-MM-SS.log
-memory_YYYY-MM-DD_HH-MM-SS.log   (only when MEMTRACK=1)
-app_YYYY-MM-DD_HH-MM-SS.log
-errors_YYYY-MM-DD_HH-MM-SS.log   (receives copies of all ERRORs)
-```
-
-## Memory Tracking
-
-```c
-void *buf = amiga_malloc(1024);   // tracked alloc
-amiga_free(buf);                  // tracked free
-
-// At program exit:
-amiga_memory_report();            // writes leak report to memory_*.log
-```
-
-In release builds (`MEMTRACK=0`) all tracking code is compiled out — `amiga_malloc` becomes `malloc`, `amiga_free` becomes `free`, and the report function is a no-op.
-
-## Copilot Instructions
-
-`.github/copilot-instructions.md` contains the full reference for AI-assisted development: API summary, ReAction patterns, coding standards, and a project-start checklist.
-
-## WHDDownloader INI Configuration
-
-WHDDownloader supports optional runtime configuration from `PROGDIR:WHDDownloader.ini`.
-
-- Sample file: `docs/WHDDownloader.ini.sample`
-- Per-key runtime verification checklist: `docs/ini_runtime_test_matrix.md`
-
-Precedence order:
-
-1. Built-in defaults
-2. INI overrides
-3. CLI arguments
-
-When no INI file exists, behavior remains unchanged.
-
-## WHDDownloader Extraction (Phases 1-5)
-
-Post-download extraction is now integrated into WHDDownloader.
-
-CLI options:
-
-- `NOEXTRACT` - disable extraction and keep download-only behavior
-- `EXTRACTTO=<path>` - extract to another volume/path while preserving pack and letter layout
-- `KEEPARCHIVES` - keep `.lha` files after successful extraction
-- `DELETEARCHIVES` - delete `.lha` files after successful extraction
-- `EXTRACTONLY` - extract archives that already exist in `GameFiles/` without downloading new files
-- `FORCEEXTRACT` - always extract even when existing `ArchiveName.txt` matches
-- `FORCEDOWNLOAD` - always download even when an extracted marker match exists
-
-INI keys (`[global]`):
-
-- `extract_archives=true|false`
-- `skip_existing_extractions=true|false`
-- `skip_download_if_extracted=true|false`
-- `force_download=true|false`
-- `extract_path=` (empty means in-place extraction)
-- `delete_archives_after_extract=true|false`
-
-Default extraction skip behavior:
-
-- Skip-check is on by default.
-- Pre-download skip-check is also on by default.
-- Before extraction, WHDDownloader checks `<target>/<derived folder>/ArchiveName.txt`.
-- Before download, WHDDownloader also checks for any matching `ArchiveName.txt` marker in the target pack/letter folder.
-- If line 2 is an exact case-sensitive match for the incoming archive filename, extraction is skipped.
-- Use `FORCEEXTRACT` to bypass this check.
-- Use `FORCEDOWNLOAD` to bypass pre-download skip.
-
-Current validation behavior:
-
-- If extraction is enabled and `c:lha` is missing, startup fails.
-- If `extract_path` is set but missing or not writable, startup fails.
-- Use `NOEXTRACT` to run download-only mode without extraction prerequisites.
-
-Current implementation note:
-
-- Archive deletion default currently follows `delete_archives_after_extract=true` unless overridden by CLI/INI.
-- The planned automatic default flip for `EXTRACTTO` mode is tracked for a later phase.
-- In normal download mode, extraction runs only after a successful new download. Use `EXTRACTONLY` to process existing archives.
+| File | Contents |
+|------|----------|
+| `PROJECT_OVERVIEW.md` | Full architecture and data-flow overview |
+| `AGENTS.md` | AI agent operational guide (module map, task patterns, pitfalls) |
+| `.github/copilot-instructions.md` | Coding standards, API reference, build rules |
+| `docs/WHDDownloader.ini.sample` | Fully annotated INI sample |
+| `docs/ini_runtime_test_matrix.md` | Per-key INI test checklist |
+| `docs/extraction_plan.md` | Extraction system design |
+| `docs/archive_index_plan.md` | Archive index cache design |
