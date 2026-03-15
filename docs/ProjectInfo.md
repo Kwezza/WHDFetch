@@ -22,7 +22,7 @@ This document summarizes the features implemented during this chat session.
 1. Download completes successfully.
 2. If extraction is enabled, archive extraction is attempted.
 3. If marker-based extraction skip is enabled and marker matches, extraction is skipped.
-4. If pre-download marker skip is enabled and marker matches, download is skipped before `wget` runs.
+4. If pre-download marker skip is enabled and marker matches, download is skipped before the direct HTTP download runs.
 5. For heuristic misses, pre-download skip now checks `.archive_index` first (fast lookup) instead of scanning every subfolder.
 6. If index lookup points to a folder that no longer exists, the stale index entry is removed and normal download/extract continues.
 7. After successful extraction and metadata write, `.archive_index` is updated in memory and flushed safely during shutdown.
@@ -201,7 +201,7 @@ Extraction skip (post-download):
 - Compares `ArchiveName.txt` line 2 with incoming archive filename.
 - Skips extraction on exact match unless `FORCEEXTRACT` is set.
 
-Pre-download skip (before `wget`):
+Pre-download skip (before direct HTTP download):
 
 - Uses same resolved target directory logic.
 - Tries heuristic folder marker first.

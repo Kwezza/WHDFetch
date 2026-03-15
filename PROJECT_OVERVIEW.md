@@ -37,9 +37,9 @@ Games(YYYY-MM-DD).zip ──(download)──▶  temp/Zip files/
                               ┌──────────────┘
                               │  for each ROM name:
                               │    check .archive_index cache
-                              │    if not extracted → wget
+                              │    if not extracted → direct HTTP download
                               ▼
-Academy_v1.2.lha      ──(wget)──────▶  GameFiles/Games/A/Academy_v1.2.lha
+Academy_v1.2.lha ──(direct download)▶  GameFiles/Games/A/Academy_v1.2.lha
                                              │
                                        c:lha extract
                                        write ArchiveName.txt
@@ -117,7 +117,6 @@ See `docs/WHDDownloader.ini.sample` for a fully annotated sample.
 | AmigaOS 3.0+ | 3.1+ recommended |
 | Roadshow TCP/IP stack | For HTTP downloads (`bsdsocket.library v4+`) |
 | `c:lha` | For archive extraction |
-| `c:wget` | For individual ROM downloads |
 | Fast RAM | Strongly recommended — `amiga_malloc` uses `MEMF_ANY` |
 
 The tool works best on an accelerated system (PiStorm, Vampire, or fast WinUAE config)

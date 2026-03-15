@@ -24,22 +24,16 @@ Key Requirements:
 
 * A functional TCP/IP stack is mandatory for operation. For users utilizing WinUAE,
   enabling the 'bsdsocket.library' within the hardware->Expansion settings is sufficient.
-* The utility primarily utilizes the version of wget that accompanies the RoadShow TCP/IP
-  stack for downloading files, ensuring seamless operation within this environment. For
-  users not utilizing RoadShow or lacking wget, compatibility has also been tested with
-  the version available on Aminet (https://aminet.net/package/dev/gg/wget-1.11.4-bin).
-  This version of wget also requires the ixemul-48.0 library
-  (https://aminet.net/package/util/libs/ixemul-48.0).
+* The utility uses its built-in direct HTTP downloader for fetching index pages,
+    DAT ZIP archives, and individual WHDLoad `.lha` archives.
 * An unzip utility is required for file extraction, tested with the Aminet version of
   UnZip (https://aminet.net/package/util/arc/UnZip).
 * Compilation and development were conducted using SAS/C on the Amiga.
 
 Compatibility Note:
 
-While developed primarily on the RoadShow TCP/IP stack with wget supplied, the utility
-should be adaptable to other TCP/IP stacks, though these configurations have not undergone
-thorough testing. Users aiming to employ alternative stacks or require wget installation
-should refer to the provided Aminet links for acquisition and setup instructions.
+While developed primarily on the RoadShow TCP/IP stack, the utility should be adaptable
+to other TCP/IP stacks, though these configurations have not undergone thorough testing.
 
 Future plans:
 
@@ -218,7 +212,7 @@ static void log_effective_configuration(const whdload_pack_def *pack_defs,
              stage,
              (long)download_options->get_dats_only,
              (long)download_options->no_skip_messages,
-             (long)download_options->no_wget_output,
+             (long)download_options->quiet_output,
              (long)download_options->extract_archives,
              (long)download_options->extract_existing_only,
              (long)download_options->skip_existing_extractions,
@@ -345,13 +339,11 @@ const int MAGAZINES = 4;
 int files_downloaded = 0;
 int files_skipped = 0;
 int no_skip_messages = 0;
-int no_wget_output = 0;
+int quiet_output = 0;
 
 int skip_AGA = 0, skip_CD = 0, skip_NTSC = 0, skip_NonEnglish = 0;
 
 long start_time;
-
-char silent_wget_command[3] = " ";
 
 #define VERSION_STRING "1.0"
 #define PROGRAM_NAME "Retroplay WHDLoad Downloader"
@@ -503,8 +495,7 @@ int main(int argc, char *argv[])
 
         if (strncasecmp_custom(argv[i], "QUIET", strlen(argv[i])) == 0)
         {
-            download_options.no_wget_output = 1;
-            strcpy(silent_wget_command, "-q");
+            download_options.quiet_output = 1;
         }
 
         if (strncasecmp_custom(argv[i], "NOEXTRACT", strlen(argv[i])) == 0)
@@ -698,7 +689,7 @@ int main(int argc, char *argv[])
 
     /* Extract DAT files from downloaded archives */
     printf("\n" textReset textBold "Extracting DAT files..." textReset "\n");
-    extract_Zip_file_and_rename(DIR_ZIP_FILES, whdload_pack_defs, 5, download_options.no_wget_output);
+    extract_Zip_file_and_rename(DIR_ZIP_FILES, whdload_pack_defs, 5, download_options.quiet_output);
 
     /* Process the extracted DAT files */
     printf("\n%s%sProcessing DAT Files...%s\n", textReset, textBold, textReset);
@@ -846,15 +837,6 @@ BOOL startup_text_and_needed_progs_are_installed(int number_of_args)
         add_line(&tb, "");
         add_line(&tb, "A tool to download and maintain your WHDLoad library from RetroPlay's online repository. Supports incremental updates.");
 
-        if (!does_file_or_folder_exist("c:wget", 0))
-        {
-            add_line(&tb, "<jf><b>wget</b> is not found in your C: folder. It's required for this program to function. Installing a TCP/IP stack like RoadShow can help automatically install wget. Alternatively, wget can be downloaded from Aminet at http://aminet.net/package/dev/gg/wget-1.11.4-bin. This version requires the ixemul.library, available at http://aminet.net/package/util/libs/ixemul-48.0.");
-            finalize_text_builder(&tb);
-            print_tagged_text(tb.lines);
-            free_text_builder(&tb);
-            return TRUE;
-        }
-
         if (!does_file_or_folder_exist("c:unzip", 0))
         {
             add_line(&tb, "<jf><b>UnZip</b> is missing from your C: directory, and it's needed to extract the downloaded DAT files. You can find a tested and working version on Aminet: http://aminet.net/package/util/arc/UnZip. The program will now exit.");
@@ -866,10 +848,6 @@ BOOL startup_text_and_needed_progs_are_installed(int number_of_args)
 
         add_line(&tb, "");
         add_line(&tb, "<b>Detected program versions<ut>");
-
-        versionInfo = get_executable_version("c:wget");
-        addf_line(&tb, "<b>wget:</b><ex08>%s", versionInfo);
-        amiga_free(versionInfo);
 
         versionInfo = get_executable_version("c:unzip");
         addf_line(&tb, "<b>UnZip:</b><ex08>%s", versionInfo);
@@ -903,7 +881,7 @@ BOOL startup_text_and_needed_progs_are_installed(int number_of_args)
             add_line(&tb, "  SKIPCD/S<ex23>Skip CDTV/CD32 packages");
             add_line(&tb, "  SKIPNTSC/S<ex23>Skip NTSC packages");
             add_line(&tb, "  SKIPNONENGLISH/S<ex23>Skip non-English packages");
-            add_line(&tb, "  QUIET/S<ex23>Suppress WGet and UnZip output");
+            add_line(&tb, "  QUIET/S<ex23>Suppress UnZip output");
             add_line(&tb, "  NOEXTRACT/S<ex23>Disable post-download archive extraction");
             add_line(&tb, "  EXTRACTTO/K<ex23>Extract archives to a separate target path");
             add_line(&tb, "  KEEPARCHIVES/S<ex23>Keep downloaded archives after extraction");
@@ -969,7 +947,7 @@ void setup_app_defaults(struct whdload_pack_def WHDLoadPackDefs[], struct downlo
         downloadOptions->download_all = 0;
         downloadOptions->get_dats_only = 0;
         downloadOptions->no_skip_messages = 0;
-        downloadOptions->no_wget_output = 0;
+        downloadOptions->quiet_output = 0;
         downloadOptions->extract_archives = TRUE;
         downloadOptions->skip_existing_extractions = TRUE;
         downloadOptions->force_extract = FALSE;
@@ -1194,7 +1172,7 @@ int download_WHDLoadPacks_From_Links(const char *bufferm, struct whdload_pack_de
                                 log_info(LOG_GENERAL, "html: downloading dat zip from '%s' to '%s'\n", download_address, file_path_to_save);
                                 download_result = ad_download_http_file(download_address, file_path_to_save, TRUE);
                                 log_info(LOG_GENERAL, "html: download result=%ld file='%s'\n", (long)download_result, fileName);
-                            //sprintf(downloadCommand, "wget %s -O \"%s/%s\" %s/%s ", silent_wget_command, DIR_ZIP_FILES, fileName, DOWNLOAD_WEBSITE, link);
+                            /* Legacy wget shell command removed; direct download API is used instead. */
                             //SystemTagList(downloadCommand, NULL);
                         }
                         else
@@ -1900,7 +1878,7 @@ long download_roms_from_file(const char *filename,
         {                           /* Check if the last character is a carriage return */
             buffer[len - 1] = '\0'; /* Replace it with a null terminator */
         }
-        if (execute_wget_download_command(buffer, WHDLoadPackDefs, download_options, replaceFiles) == 20)
+        if (execute_archive_download_command(buffer, WHDLoadPackDefs, download_options, replaceFiles) == 20)
         {
             printf(textReset "User cancelled download or error\n");
             fclose(filePtr);
@@ -1916,14 +1894,11 @@ long download_roms_from_file(const char *filename,
     return 0;
 }
 
-LONG execute_wget_download_command(const char *downloadWHDFile,
-                                   struct whdload_pack_def *WHDLoadPackDefs,
-                                   const struct download_option *download_options,
-                                   int replaceFiles)
+LONG execute_archive_download_command(const char *downloadWHDFile,
+                                      struct whdload_pack_def *WHDLoadPackDefs,
+                                      const struct download_option *download_options,
+                                      int replaceFiles)
 {
-
-    /*creates wget command string, and then calls it*/
-    char downloadCommand[2024] = {0};
     char fileName[256] = {0};
     char downloadUrl[256] = {0};
     char downloadFirstLetter[2] = {0};
@@ -1991,15 +1966,15 @@ LONG execute_wget_download_command(const char *downloadWHDFile,
 
     create_directory_based_on_filename(WHDLoadPackDefs->extracted_pack_dir, downloadWHDFile);
     sprintf(downloadUrl, "%s%s/%s", WHDLoadPackDefs->download_url, downloadFirstLetter, downloadWHDFile);
-    sprintf(downloadCommand, "wget -x %s -O \"%s\" \"%s\" ", silent_wget_command, fileName, downloadUrl);
-    remove_CR_LF_from_string(downloadCommand);
 
-    returnCode = SystemTagList(downloadCommand, NULL);
+    /* Keep archive downloads visible; QUIET currently only suppresses UnZip output. */
+    returnCode = (LONG)ad_download_http_file(downloadUrl, fileName, FALSE);
 
     if (returnCode != 0)
     {
+        ad_print_download_error((int)returnCode);
         log_error(LOG_DOWNLOAD,
-                  "download: wget failed for '%s' (return=%ld)\n",
+                  "download: direct HTTP download failed for '%s' (code=%ld)\n",
                   downloadWHDFile,
                   (long)returnCode);
         return returnCode;

@@ -18,7 +18,6 @@ optionally replacing drawer icons.
 | AmigaOS 3.0+ | 3.1+ recommended |
 | Roadshow TCP/IP stack | `bsdsocket.library v4+` required for HTTP |
 | `c:lha` | Archive extraction |
-| `c:wget` | Individual ROM downloads |
 | Fast RAM | Strongly recommended — tool uses `MEMF_ANY` allocations |
 
 ---
@@ -80,7 +79,7 @@ Games will be downloaded to `GameFiles/Games/` organised into letter sub-folders
 |----------|--------|
 | `NOICONS` | Skip icon replacement after extraction |
 | `NOSKIP` | Print a line for every skipped title |
-| `QUIET` | Suppress wget progress output |
+| `QUIET` | Suppress unzip output |
 
 ---
 

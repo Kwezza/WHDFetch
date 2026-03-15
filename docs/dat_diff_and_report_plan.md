@@ -22,7 +22,7 @@ with a per-letter cached index lookup. Key points relevant to this plan:
 ## Problem
 
 Currently `download_roms_from_file()` reads ALL entries (~4000 for Games) and calls
-`execute_wget_download_command()` for each. Each call performs:
+`execute_archive_download_command()` for each. Each call performs:
 1. A filesystem existence check for the `.lha` archive file.
 2. An `extract_is_archive_already_extracted()` call (now fast thanks to the archive index).
 
@@ -89,7 +89,7 @@ Games update: 15 new archives found, 3 filtered (AGA), 12 downloaded.
 
 5. **Implement `download_roms_from_diff()`** — *depends on 4*
    - Similar to `download_roms_from_file()` but iterates the diff ADDED entries only
-   - Calls `execute_wget_download_command()` for each (reuses existing download logic)
+   - Calls `execute_archive_download_command()` for each (reuses existing download logic)
    - Each call still benefits from the archive index for fast skip checks
    - Much shorter loop: typically 10-50 entries vs 4000
 
@@ -196,4 +196,4 @@ Games update: 15 new archives found, 3 filtered (AGA), 12 downloaded.
 ## Further Considerations
 1. **DAT file sort verification**: The plan assumes .txt files are sorted. If Retroplay ever changes XML ordering, the merge-join would produce wrong results. Mitigation: add a quick is-sorted check at the start of diff; if unsorted, fall back to loading into memory and sorting. Recommend: verify with current files first, add the check only if needed.
 2. **Removed entries**: The diff detects archives REMOVED from a pack (in old, not in new). Currently not acted on. Future option: warn user about removed entries, or auto-clean extracted folders. Recommend: log removed entries in the report but don't delete anything. Note: removed entries will leave stale `.archive_index` entries — these are harmless (never queried) and self-correct if the same archive is ever re-added.
-3. **Index cache and letter boundaries in diff mode**: `download_roms_from_diff()` will process entries that may span multiple letters. The archive index cache handles letter transitions automatically (flush + reload on directory change). No special handling needed in the diff download loop — it calls the same `execute_wget_download_command()` which triggers the index through `extract_is_archive_already_extracted()`.
+3. **Index cache and letter boundaries in diff mode**: `download_roms_from_diff()` will process entries that may span multiple letters. The archive index cache handles letter transitions automatically (flush + reload on directory change). No special handling needed in the diff download loop — it calls the same `execute_archive_download_command()` which triggers the index through `extract_is_archive_already_extracted()`.

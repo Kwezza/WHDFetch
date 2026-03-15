@@ -219,7 +219,7 @@ update, replacing the filename heuristic.
 ## Extraction Flow (Per Archive)
 
 ```
-1. Download completes successfully (wget return code 0)
+1. Download completes successfully (direct HTTP result code 0)
        │
 2. Is extraction enabled? (`extract_archives == TRUE`)
        │ No → skip, return

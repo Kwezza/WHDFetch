@@ -175,7 +175,7 @@ For each `.xml` file in `temp/Dat files/`:
 ### Stage 5 — Download individual ROM archives
 
 **Functions:** `download_roms_if_file_exists()` → `download_roms_from_file()` →
-`execute_wget_download_command()` (main.c ~1260–1370)
+`execute_archive_download_command()` (main.c)
 
 1. `get_first_matching_fileName()` scans `temp/Dat files/` for a `.txt` file whose
    name starts with the pack's `filter_dat_files` string.
@@ -184,7 +184,7 @@ For each `.xml` file in `temp/Dat files/`:
    - Build the download path: `<download_url><first-letter-folder>/<filename>`
    - Build the local save path: `GameFiles/<extracted_pack_dir>/<first-letter-folder>/<filename>`
    - Skip if the local file already exists.
-   - Otherwise, download via wget.
+   - Otherwise, download via the direct HTTP downloader.
 
 ---
 

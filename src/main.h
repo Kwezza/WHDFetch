@@ -74,15 +74,13 @@ extern const int MAGAZINES;
 extern int files_downloaded;
 extern int files_skipped;
 extern int no_skip_messages;
-extern int no_wget_output;
+extern int quiet_output;
 extern int skip_AGA;
 extern int skip_CD;
 extern int skip_NTSC;
 extern int skip_NonEnglish;
 
 extern long start_time;
-
-extern char silent_wget_command[3];
 
 extern const char *VERSION_STRING;
 extern const char *PROGRAM_NAME;
@@ -125,7 +123,7 @@ typedef struct download_option {
     int download_magazines;
     int get_dats_only;
     int no_skip_messages;
-    int no_wget_output;
+    int quiet_output;
     BOOL extract_archives;
     BOOL skip_existing_extractions;
     BOOL force_extract;
@@ -166,10 +164,10 @@ LONG download_roms_from_file(const char *filename,
 LONG download_roms_if_file_exists(whdload_pack_def *WHDLoadPackDefs,
                                   const download_option *download_options,
                                   int replaceFiles);
-LONG execute_wget_download_command(const char *downloadWHDFile,
-                                   whdload_pack_def *WHDLoadPackDefs,
-                                   const download_option *download_options,
-                                   int replaceFiles);
+LONG execute_archive_download_command(const char *downloadWHDFile,
+                                      whdload_pack_def *WHDLoadPackDefs,
+                                      const download_option *download_options,
+                                      int replaceFiles);
 LONG extract_existing_archives_from_file(const char *filename,
                                          whdload_pack_def *WHDLoadPackDefs,
                                          const download_option *download_options);

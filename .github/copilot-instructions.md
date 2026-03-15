@@ -6,7 +6,7 @@
 
 - Downloads `index.html`, parses HTML links, and fetches matching `.zip` packs from the Retroplay site
 - Extracts XML DAT files from ZIPs, parses `<rom name="...">` entries, applies skip filters (AGA/CD/NTSC/language)
-- Downloads individual `.lha` ROM archives via `wget` into `GameFiles/<pack>/<letter>/`
+- Downloads individual `.lha` ROM archives via built-in HTTP download code into `GameFiles/<pack>/<letter>/`
 - Extracts `.lha` archives using `c:lha`, writes `ArchiveName.txt` markers, and optionally replaces drawer icons
 - Caches extracted-game state in `.archive_index` files to avoid expensive AmigaOS filesystem scans
 
@@ -102,7 +102,7 @@ Adding a new `.c` module requires:
 2. Download matching .zip packs → temp/Zip files/
 3. Extract XML DAT files from ZIPs → temp/Dat files/<filter>(<date>).xml
 4. Parse <rom name="..."> entries → apply skip filters → write .txt list
-5. For each ROM name: check .archive_index cache → if absent, wget → GameFiles/<pack>/<letter>/<rom>
+5. For each ROM name: check .archive_index cache → if absent, direct HTTP download → GameFiles/<pack>/<letter>/<rom>
 6. Extract .lha via c:lha → write ArchiveName.txt marker → update .archive_index → optionally replace icon
 ```
 
@@ -143,7 +143,7 @@ SKIP_NTSC            Filter: skip NTSC games
 SKIP_NONENG          Filter: skip non-English versions
 NOICONS              Skip icon replacement
 NOSKIP               Show all skip messages
-QUIET                Silent wget output
+QUIET                Silent unzip output
 ```
 
 ---
@@ -236,7 +236,7 @@ typedef enum {
 log_debug(LOG_DOWNLOAD, "Connecting: %s\n", url);
 log_info(LOG_GENERAL,   "Pack loaded: %s\n", pack->full_text_name_of_pack);
 log_warning(LOG_PARSER, "Unknown token: %s\n", token);
-log_error(LOG_GENERAL,  "wget failed: %ld\n", (long)rc);
+log_error(LOG_GENERAL,  "download failed: %ld\n", (long)rc);
 ```
 
 Log files written to `PROGDIR:logs/<category>_YYYY-MM-DD_HH-MM-SS.log`.
