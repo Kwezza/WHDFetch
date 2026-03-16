@@ -998,6 +998,23 @@ static int process_response(LONG sock, const char *output_path, BPTR *file, BOOL
         }
     }
 
+    /* Force a final progress refresh so fast downloads end cleanly on-screen.
+     * Intentionally omit speed text to avoid trailing "Calculating..." on short transfers. */
+    if (content_length > 0)
+    {
+        display_progress_bar(100, NULL, "Downloaded: ");
+    }
+    else
+    {
+        display_message(MSG_PROGRESS,__FILE__,__LINE__,
+                       "Downloaded: %lu KB",
+                       total_bytes_downloaded / 1024);
+    }
+
+    /* Clear progress line so caller messages (e.g., "File successfully downloaded.")
+     * appear cleanly without residual progress text. */
+    display_message(MSG_CLEAR,__FILE__,__LINE__, "");
+
     /* Restore blocking mode before returning */
     non_blocking = 0;
     IoctlSocket(sock, FIONBIO, &non_blocking);

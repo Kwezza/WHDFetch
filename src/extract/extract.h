@@ -57,6 +57,10 @@ BOOL extract_index_lookup(const char *target_directory,
                           char *out_folder_name,
                           size_t out_folder_name_size);
 
+BOOL extract_index_find_by_title(const char *title,
+                                 char *out_old_archive,
+                                 size_t out_size);
+
 BOOL extract_index_update(const char *target_directory,
                           const char *archive_filename,
                           const char *folder_name);

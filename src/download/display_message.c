@@ -46,9 +46,9 @@ void display_message(int msg_type, const char *file, int line, const char *forma
     }
 
 #ifdef DEBUG
+    if (msg_type == MSG_DEBUG || msg_type == MSG_ERROR)
     {
-        /* Only display debug messages if DEBUG is defined */
-        /* Include filename and line information for debug messages */
+        /* Include filename/line prefix only for debug and error messages. */
         char debug_prefix[128]; /* Buffer for debug prefix */
         snprintf(debug_prefix, sizeof(debug_prefix), "[%s:%d]: ", filename, line);
         PutStr(debug_prefix);

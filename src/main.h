@@ -150,9 +150,15 @@ BOOL startup_text_and_needed_progs_are_installed(int number_of_args);
 char *concatStrings(const char *s1, const char *s2);
 char *get_first_matching_fileName(const char *directory);
 const char *get_month_name(int month);
-int compare_and_decide_DatFileDownload(char *filename, const char *searchText);
+int compare_and_decide_DatFileDownload(char *filename,
+                                       const char *searchText,
+                                       int *should_download_zip,
+                                       BOOL force_download);
 int compare_dates_greater_then_date2(const char *date1, const char *date2);
-int download_WHDLoadPacks_From_Links(const char *bufferm, whdload_pack_def WHDLoadPackDefs[], int size_WHDLoadPackDef);
+int download_WHDLoadPacks_From_Links(const char *bufferm,
+                                     whdload_pack_def WHDLoadPackDefs[],
+                                     int size_WHDLoadPackDef,
+                                     const download_option *download_options);
 int extract_date_from_filename(const char *filename, char *buffer, int bufSize);
 int Get_latest_filename_from_directory(const char *directory, const char *text, char *latestFileName);
 int get_bsdSocket_version(void);
@@ -179,7 +185,9 @@ void create_directory_based_on_filename(const char *parentDir, const char *fileN
 void delete_all_files_in_dir(const char *directory);
 void ensure_time_zone_set(void);
 int extract_and_save_rom_names_from_XML(char *inputFilePath, char *outputFilePath, const char *packName);
-void extract_and_validate_HTML_links(whdload_pack_def WHDLoadPackDefs[], int size_WHDLoadPackDef);
+void extract_and_validate_HTML_links(whdload_pack_def WHDLoadPackDefs[],
+                                     int size_WHDLoadPackDef,
+                                     const download_option *download_options);
 void Format_text_split_by_Caps(const char *original, char *buffer, size_t buffer_len);
 void get_folder_name_from_character(char *c);
 void remove_all_occurrences(char *src, const char *toRemove);

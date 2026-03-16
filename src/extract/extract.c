@@ -613,6 +613,55 @@ BOOL extract_index_lookup(const char *target_directory,
     return TRUE;
 }
 
+BOOL extract_index_find_by_title(const char *title,
+                                 char *out_old_archive,
+                                 size_t out_size)
+{
+    size_t title_len;
+    int i;
+
+    if (title == NULL || title[0] == '\0' || out_old_archive == NULL || out_size == 0)
+    {
+        return FALSE;
+    }
+
+    if (!g_archive_index_cache.loaded)
+    {
+        return FALSE;
+    }
+
+    title_len = strlen(title);
+
+    for (i = 0; i < g_archive_index_cache.entry_count; i++)
+    {
+        const char *archive_name;
+        char separator;
+
+        archive_name = g_archive_index_cache.archive_names[i];
+        if (archive_name == NULL)
+        {
+            continue;
+        }
+
+        if (strncmp(archive_name, title, title_len) != 0)
+        {
+            continue;
+        }
+
+        separator = archive_name[title_len];
+        if (separator != '_' && separator != '.')
+        {
+            continue;
+        }
+
+        strncpy(out_old_archive, archive_name, out_size - 1);
+        out_old_archive[out_size - 1] = '\0';
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
 BOOL extract_index_update(const char *target_directory,
                           const char *archive_filename,
                           const char *folder_name)

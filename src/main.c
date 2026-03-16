@@ -72,6 +72,7 @@ Future plans:
 #include "ini_parser.h"
 #include "tag_text.h"
 #include "linecounter.h"
+#include "report/report.h"
 #include "download/amiga_download.h"
 #include "extract/extract.h"
 #include "platform/platform.h"
@@ -264,6 +265,10 @@ static void do_shutdown(void)
         log_info(LOG_GENERAL, "do_shutdown: download lib was not initialized, skipping cleanup\n");
     }
 
+    log_info(LOG_GENERAL, "do_shutdown: clearing session report state...\n");
+    report_cleanup();
+    log_info(LOG_GENERAL, "do_shutdown: session report state cleared\n");
+
     log_info(LOG_GENERAL, "do_shutdown: flushing extract index cache...\n");
     extract_index_flush();
     log_info(LOG_GENERAL, "do_shutdown: extract index cache flush complete\n");
@@ -408,6 +413,7 @@ int main(int argc, char *argv[])
     /* Start the log system immediately so all shutdown steps are captured */
     initialize_log_system(TRUE);
     log_info(LOG_GENERAL, "main: starting up\n");
+    report_init();
 
     if (ini_parser_load_overrides(whdload_pack_defs, &download_options))
     {
@@ -790,6 +796,9 @@ int main(int argc, char *argv[])
                    whdload_pack_defs[i].count_existing_files_skipped);
         }
     }
+    printf("\n");
+
+    report_write();
     printf("\n");
 
     /* Show future plans message */
@@ -1919,7 +1928,8 @@ LONG execute_archive_download_command(const char *downloadWHDFile,
 
     sprintf(fileName, "%s/%s/%s/%s", DIR_GAME_DOWNLOADS, WHDLoadPackDefs->extracted_pack_dir, downloadFirstLetter, downloadWHDFile);
     sanitize_amiga_file_path(fileName);
-    if (does_file_or_folder_exist(fileName, 1))
+    if (does_file_or_folder_exist(fileName, 1) &&
+        !(download_options != NULL && download_options->force_download == TRUE))
     {
         if (no_skip_messages < 1)
         {
@@ -1948,6 +1958,12 @@ LONG execute_archive_download_command(const char *downloadWHDFile,
                           downloadWHDFile);
             }
         }
+
+        report_add_local_cache_reuse(downloadWHDFile, WHDLoadPackDefs->full_text_name_of_pack);
+        log_info(LOG_GENERAL,
+             "download: reused local archive cache for '%s' (no HTTP download)\n",
+             downloadWHDFile);
+
         files_skipped = files_skipped + 1;
         WHDLoadPackDefs->count_existing_files_skipped = WHDLoadPackDefs->count_existing_files_skipped + 1;
 
@@ -2011,6 +2027,21 @@ LONG execute_archive_download_command(const char *downloadWHDFile,
 
     files_downloaded = files_downloaded + 1;
     WHDLoadPackDefs->count_new_files_downloaded = WHDLoadPackDefs->count_new_files_downloaded + 1;
+
+    {
+        game_metadata metadata = {0};
+        char old_archive_name[256] = {0};
+        const char *old_archive = NULL;
+
+        extract_game_info_from_filename(downloadWHDFile, &metadata);
+        if (metadata.title[0] != '\0' &&
+            extract_index_find_by_title(metadata.title, old_archive_name, sizeof(old_archive_name)))
+        {
+            old_archive = old_archive_name;
+        }
+
+        report_add(downloadWHDFile, WHDLoadPackDefs->full_text_name_of_pack, old_archive);
+    }
 
     if (download_options != NULL && download_options->extract_archives == TRUE)
     {

@@ -120,6 +120,7 @@ char *pad_number_with_dots(int number, int total_length)
 
     // Fill with dots
     memset(result, '.', dots_needed);
+    result[dots_needed] = '\0';
 
     // Append the number
     strcat(result, num_str);

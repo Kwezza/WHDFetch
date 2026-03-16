@@ -16,6 +16,11 @@ This document summarizes the features implemented during this chat session.
 - Added cache lifecycle hooks: runtime update after successful extraction and flush on shutdown.
 - Added force/override flags for both download and extraction skip systems.
 - Updated help text, sample INI, and README documentation.
+- Added session report module to persist end-of-run archive activity.
+- Added NEW vs UPDATED classification for successfully downloaded archives.
+- Added local-cache reuse tracking (explicitly recorded as no-download activity).
+- Added explicit runtime log line when local archive cache is reused.
+- Fixed `FORCEDOWNLOAD` behavior so it bypasses local-archive short-circuit and truly forces HTTP fetch.
 
 ## New Runtime Behavior
 
@@ -26,6 +31,41 @@ This document summarizes the features implemented during this chat session.
 5. For heuristic misses, pre-download skip now checks `.archive_index` first (fast lookup) instead of scanning every subfolder.
 6. If index lookup points to a folder that no longer exists, the stale index entry is removed and normal download/extract continues.
 7. After successful extraction and metadata write, `.archive_index` is updated in memory and flushed safely during shutdown.
+8. If an archive already exists in `GameFiles/...` and `FORCEDOWNLOAD` is **not** set, the tool can reuse that local archive for extraction/recovery instead of HTTP download.
+9. Local archive reuse is now visible in two places:
+   - Runtime log (`download: reused local archive cache ... (no HTTP download)`)
+   - Session report section `Local cache reuse (no download)`
+10. If `FORCEDOWNLOAD` is set, local archive short-circuit is bypassed and network download path is used.
+11. Session report file is written at end of run when any reportable activity exists, grouped by pack with totals.
+
+## Session Report System (What Users See)
+
+Purpose:
+
+- Persist a clear, human-readable record of what changed in a run.
+- Distinguish real network download activity from local recovery/re-extraction activity.
+
+Location:
+
+- `PROGDIR:updates/updates_YYYY-MM-DD_HH-MM-SS.txt`
+
+Current categories:
+
+- `New` — newly downloaded archives not matched to prior title in index.
+- `Updated` — downloaded archives matched to an existing title (version/variant bump path).
+- `Local cache reuse (no download)` — archive handled from existing local `GameFiles` cache.
+
+Console behavior:
+
+- Prints report path and category totals when report data exists.
+- Prints `No new archives this session.` only when no reportable entries were collected.
+
+Why this benefits users:
+
+- Removes ambiguity between "downloaded from server" and "processed from local cache".
+- Makes troubleshooting easier when expected downloads do not occur.
+- Gives a persistent session audit trail for later review/manual updates.
+- Helps users understand whether content changed due to network updates or local marker/index recovery.
 
 ## Marker File Contract
 
@@ -96,6 +136,13 @@ Pre-download skip control:
 
 - `NODOWNLOADSKIP` disables marker-based pre-download skip.
 - `FORCEDOWNLOAD` always downloads even if a marker match is found.
+
+Maintenance commands (destructive, with confirmation prompts):
+
+- `PURGETEMP` permanently deletes `PROGDIR:temp` including all files and subfolders.
+- `PURGEARCHIVES` permanently deletes downloaded `.lha` archives under `GameFiles` recursively.
+- `PURGEARCHIVES` does **not** delete extracted game folders.
+- Both commands print a brief warning and require explicit `Y` confirmation.
 
 Icon control:
 
@@ -204,10 +251,12 @@ Extraction skip (post-download):
 Pre-download skip (before direct HTTP download):
 
 - Uses same resolved target directory logic.
+- First checks whether the archive already exists in local `GameFiles/...` cache (fast local reuse path).
 - Tries heuristic folder marker first.
 - Tier 2 now uses `.archive_index` lookup first (fast path).
 - If `.archive_index` cannot be loaded, fallback scan still uses child folders + `ArchiveName.txt` markers.
 - Skips download on exact marker match unless `FORCEDOWNLOAD` is set or `NODOWNLOADSKIP` is used.
+- With current behavior, `FORCEDOWNLOAD` also bypasses local `GameFiles` archive reuse and forces HTTP fetch.
 
 ### Why this was changed
 

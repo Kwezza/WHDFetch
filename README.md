@@ -49,6 +49,8 @@ Games will be downloaded to `GameFiles/Games/` organised into letter sub-folders
 | `MAGAZINE` | Download Magazines pack |
 | `DOWNLOADALL` | Download all five packs |
 | `DATONLY` | Fetch DAT files only — no ROM downloads |
+| `PURGETEMP` | Delete `PROGDIR:temp` recursively (asks for confirmation first) |
+| `PURGEARCHIVES` | Purge downloaded `.lha` files under `GameFiles/` (asks for confirmation; keeps extracted folders) |
 | `HELP` | Show help and exit |
 
 ### Extraction control
