@@ -209,9 +209,8 @@ static void log_effective_configuration(const whdload_pack_def *pack_defs,
     }
 
     log_info(LOG_GENERAL,
-             "config[%s]: options dat_only=%ld no_skip=%ld quiet=%ld extract=%ld extract_only=%ld skip_existing=%ld force_extract=%ld skip_download=%ld force_download=%ld extract_path='%s' delete_archives=%ld skip_aga=%ld skip_cd=%ld skip_ntsc=%ld skip_non_english=%ld use_custom_icons=%ld unsnapshot_icons=%ld\n",
+             "config[%s]: options no_skip=%ld quiet=%ld extract=%ld extract_only=%ld skip_existing=%ld force_extract=%ld skip_download=%ld force_download=%ld extract_path='%s' delete_archives=%ld skip_aga=%ld skip_cd=%ld skip_ntsc=%ld skip_non_english=%ld use_custom_icons=%ld unsnapshot_icons=%ld\n",
              stage,
-             (long)download_options->get_dats_only,
              (long)download_options->no_skip_messages,
              (long)download_options->quiet_output,
              (long)download_options->extract_archives,
@@ -354,7 +353,7 @@ long start_time;
 #define PROGRAM_NAME "Retroplay WHDLoad Downloader"
 #define TEMPLATE "HELP/S,DOWNLOADGAMES/S,DOWNLOADBETAGAMES/S,"                       \
                  "DOWNLOADDEMOS/S,DOWNLOADBETADEMOS/S,DOWNLOADMAGS/S,DOWNLOADALL/S," \
-                 "LATESTDATONLY/S,NOSKIPREPORT/S,SKIPAGA/S,SKIPCD/S,"                \
+                 "NOSKIPREPORT/S,SKIPAGA/S,SKIPCD/S,"                                \
                  "SKIPNTSC/S,SKIPNONENGLISH/S,QUIET/S,NOEXTRACT/S,"                  \
                  "EXTRACTTO/K,KEEPARCHIVES/S,DELETEARCHIVES/S,EXTRACTONLY/S,FORCEEXTRACT/S," \
                  "NODOWNLOADSKIP/S,FORCEDOWNLOAD/S,NOICONS/S"
@@ -406,6 +405,7 @@ int main(int argc, char *argv[])
     long response_code;           /* Return code from download operations */
     int download_result;          /* Result of download operations */
     int requested_pack_count = 0; /* Number of packs selected by CLI/defaults */
+    int has_cli_pack_selection = 0;
     char temp_string[1024];       /* Buffer for building command strings */    
     /* Initialize application defaults and structures */
     setup_app_defaults(whdload_pack_defs, &download_options);
@@ -439,6 +439,29 @@ int main(int argc, char *argv[])
     
     /* Start execution timer */
     start_time = time(NULL);
+
+    /* If any CLI pack selection command is present, it overrides INI pack selection. */
+    for (i = 0; i < argc; i++)
+    {
+        if (strncasecmp_custom(argv[i], "DOWNLOADGAMES", strlen(argv[i])) == 0 ||
+            strncasecmp_custom(argv[i], "DOWNLOADBETAGAMES", strlen(argv[i])) == 0 ||
+            strncasecmp_custom(argv[i], "DOWNLOADDEMOS", strlen(argv[i])) == 0 ||
+            strncasecmp_custom(argv[i], "DOWNLOADBETADEMOS", strlen(argv[i])) == 0 ||
+            strncasecmp_custom(argv[i], "DOWNLOADMAGS", strlen(argv[i])) == 0 ||
+            strncasecmp_custom(argv[i], "DOWNLOADALL", strlen(argv[i])) == 0)
+        {
+            has_cli_pack_selection = 1;
+            break;
+        }
+    }
+
+    if (has_cli_pack_selection)
+    {
+        for (i = 0; i < 5; i++)
+        {
+            whdload_pack_defs[i].user_requested_download = 0;
+        }
+    }
 
     /* Process command line arguments */
     for (i = 0; i < argc; i++)
@@ -495,9 +518,6 @@ int main(int argc, char *argv[])
         /* Mode settings */
         if (strncasecmp_custom(argv[i], "NOSKIPREPOR", strlen(argv[i])) == 0)
             download_options.no_skip_messages = 1;
-
-        if (strncasecmp_custom(argv[i], "LATESTDATONLY", strlen(argv[i])) == 0)
-            download_options.get_dats_only = 1;
 
         if (strncasecmp_custom(argv[i], "QUIET", strlen(argv[i])) == 0)
         {
@@ -572,18 +592,6 @@ int main(int argc, char *argv[])
         {
             requested_pack_count++;
         }
-    }
-
-    if (download_options.get_dats_only == 1 && requested_pack_count == 0)
-    {
-        /* Keep legacy CLI simple: DAT-only with no pack flags means all DAT packs. */
-        whdload_pack_defs[GAMES].user_requested_download = 1;
-        whdload_pack_defs[GAMES_BETA].user_requested_download = 1;
-        whdload_pack_defs[DEMOS].user_requested_download = 1;
-        whdload_pack_defs[DEMOS_BETA].user_requested_download = 1;
-        whdload_pack_defs[MAGAZINES].user_requested_download = 1;
-        requested_pack_count = 5;
-        log_info(LOG_GENERAL, "main: dats-only mode with no explicit pack flags, defaulting to all packs\n");
     }
 
     if (requested_pack_count == 0)
@@ -739,29 +747,17 @@ int main(int argc, char *argv[])
         free_text_builder(&tb);
     }
 
-    /* Handle DATs-only mode */
-    if (download_options.get_dats_only == 1)
+    /* Process each requested pack for downloading */
+    for (i = 0; i < 5; i++)
     {
-        printf("\n\n" textReset textBold "Dats only mode complete!\n");
-        printf(textReset textBold "========================" textReset "\n\n");
-        log_info(LOG_GENERAL, "main: dats-only mode complete, beginning shutdown\n");
-        do_shutdown();
-        return 0;
-    }
-    else
-    {
-        /* Process each requested pack for downloading */
-        for (i = 0; i < 5; i++)
+        if (whdload_pack_defs[i].user_requested_download == 1)
         {
-            if (whdload_pack_defs[i].user_requested_download == 1)
+            printf("\n" textReset textBold "Downloading %s..." textReset "\n", 
+                   whdload_pack_defs[i].full_text_name_of_pack);
+            response_code = download_roms_if_file_exists(&whdload_pack_defs[i], &download_options, replace_files);
+            if (response_code == 20)
             {
-                printf("\n" textReset textBold "Downloading %s..." textReset "\n", 
-                       whdload_pack_defs[i].full_text_name_of_pack);
-                response_code = download_roms_if_file_exists(&whdload_pack_defs[i], &download_options, replace_files);
-                if (response_code == 20)
-                {
-                    break;
-                }
+                break;
             }
         }
     }
@@ -884,7 +880,6 @@ BOOL startup_text_and_needed_progs_are_installed(int number_of_args)
             add_line(&tb, "  DOWNLOADALL/S<ex23>Download all packs");
             add_line(&tb, "");
             add_line(&tb, "<b>Options (optional, choose one or more):</b>");
-            add_line(&tb, "  LATESTDATONLY/S<ex23>Download latest DAT files only");
             add_line(&tb, "  NOSKIPREPORT/S<ex23>Don't report skipped existing archives");
             add_line(&tb, "  SKIPAGA/S<ex23>Skip AGA packages");
             add_line(&tb, "  SKIPCD/S<ex23>Skip CDTV/CD32 packages");
@@ -906,8 +901,6 @@ BOOL startup_text_and_needed_progs_are_installed(int number_of_args)
             add_line(&tb, "<ex06>Download all games");
             add_line(&tb, "  WHDDownloader DOWNLOADALL SKIPAGA");
             add_line(&tb, "<ex06>Download all packs, skipping AGA packages");
-            add_line(&tb, "  WHDDownloader LATESTDATONLY");
-            add_line(&tb, "<ex06>Download latest DAT files only (no game files)");
             add_line(&tb, "  WHDDownloader DOWNLOADGAMES EXTRACTTO=Games: KEEPARCHIVES");
             add_line(&tb, "<ex06>Download games and extract to Games: while keeping archives");
             add_line(&tb, "  WHDDownloader DOWNLOADBETAGAMES EXTRACTONLY EXTRACTTO=Games: KEEPARCHIVES");
@@ -954,7 +947,6 @@ void setup_app_defaults(struct whdload_pack_def WHDLoadPackDefs[], struct downlo
         downloadOptions->download_demos_beta = 0;
         downloadOptions->download_magazines = 0;
         downloadOptions->download_all = 0;
-        downloadOptions->get_dats_only = 0;
         downloadOptions->no_skip_messages = 0;
         downloadOptions->quiet_output = 0;
         downloadOptions->extract_archives = TRUE;

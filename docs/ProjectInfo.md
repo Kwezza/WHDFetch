@@ -357,3 +357,24 @@ WHDDownloader DOWNLOADBETAGAMES EXTRACTONLY EXTRACTTO=Games: KEEPARCHIVES
 - Folder names inside archives are not assumed to match archive filename prefixes.
 - Marker matching is authoritative for skip decisions.
 - If marker file is missing or unreadable, normal download/extract flow continues.
+
+## Known Limitations
+
+### No pre-download "what's new" preview
+
+WHDDownloader currently has no way to show the user what new or updated archives are
+available on the server *before* downloading and applying them. The session report
+(`PROGDIR:updates/updates_*.txt`) classifies each downloaded archive as NEW or UPDATED,
+but this information is only available *after* the download run completes.
+
+This means the user cannot:
+- Preview what would be downloaded without actually downloading it
+- Selectively skip individual new archives before they are fetched
+
+**Workaround:** Use the existing skip filter flags (`SKIPAGA`, `SKIPCD`, `SKIPNTSC`,
+`SKIPNONENGLISH`) to exclude broad categories of content before running. Review the
+session report after each run to see exactly what was added or updated.
+
+**Future release:** A dry-run preview mode is planned that will compare the latest
+server DAT files against the local archive index and produce a report of what would be
+downloaded — without actually fetching any archives or modifying local state.

@@ -121,7 +121,6 @@ typedef struct download_option {
     int download_games;
     int download_games_beta;
     int download_magazines;
-    int get_dats_only;
     int no_skip_messages;
     int quiet_output;
     BOOL extract_archives;

@@ -129,7 +129,6 @@ GAME                 Download Games pack (alias)
 GAMEBETA             Download Games Beta pack
 MAGAZINE             Download Magazines pack
 DOWNLOADALL          Download all packs
-DATONLY              DAT files only (no ROM downloads)
 NOEXTRACT            Skip extraction after download
 EXTRACTTO=<path>     Extract to alternate path
 KEEPARCHIVES         Do not delete .lha after extraction

@@ -332,10 +332,7 @@ static void apply_pack_key_value(whdload_pack_def pack_defs[], int pack_index, c
     {
         if (parse_boolean_value(value, &bool_value))
         {
-            if (!bool_value)
-            {
-                pack_defs[pack_index].user_requested_download = 0;
-            }
+            pack_defs[pack_index].user_requested_download = bool_value ? 1 : 0;
         }
         else
         {
