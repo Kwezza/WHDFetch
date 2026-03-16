@@ -17,7 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <devices/timer.h>
-#include <errno.h>
+#include <sys/errno.h>
 #include <netinet/in.h>
 #include <sys/ioctl.h>
 
@@ -44,7 +44,7 @@ extern struct Device *TimerBase;
  * Provide a portable C89 implementation for all non-SAS/C compilers.
  */
 #ifndef __SASC
-static int strnicmp(const char *s1, const char *s2, size_t n)
+static int ad_strnicmp(const char *s1, const char *s2, size_t n)
 {
 	unsigned char c1;  /* Left-hand comparison character */
 	unsigned char c2;  /* Right-hand comparison character */
@@ -55,8 +55,8 @@ static int strnicmp(const char *s1, const char *s2, size_t n)
 		if (c1 != c2) { return (int)c1 - (int)c2; }
 		if (c1 == '\0') { return 0; }
 	}
-	return 0;
-} /* strnicmp */
+    return 0;
+} /* ad_strnicmp */
 #endif /* !__SASC */
 
 /* Add this near other external declarations */
@@ -488,7 +488,7 @@ static int send_http_request(LONG sock, const char *host, const char *path, BOOL
 static void process_header_line(char *header_line, int *content_length, BOOL silent)
 {
     /* Check for Content-Length */
-    if (strnicmp(header_line, "Content-Length:", 15) == 0)
+    if (ad_strnicmp(header_line, "Content-Length:", 15) == 0)
     {
         *content_length = atoi(header_line + 15);
         #ifdef DEBUG

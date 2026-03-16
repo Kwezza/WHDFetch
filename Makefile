@@ -65,6 +65,7 @@ ROADSHOW_INC = C:/Amiga/Roadshow-SDK-1.8/netinclude
 NDK_INC      = C:/Amiga/AmigaIncludes
 
 CFLAGS = +aos68k -c99 -cpu=68000 -O2 -size \
+		 -I$(VBCC)/targets/m68k-amigaos/include \
          -I$(SRC_DIR) \
          -I$(NDK_INC) \
          -I$(ROADSHOW_INC) \
