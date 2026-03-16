@@ -34,6 +34,11 @@
 #define MAX_HEADER_LINE 256
 
 
+static BOOL g_dns_cache_valid = FALSE;
+static char g_dns_cache_host[MAX_HOST_LEN] = {0};
+static ULONG g_dns_cache_addr = 0;
+
+
 
 /* Global library bases managed in download_lib.c and timer_shared.c */
 extern struct Library *SocketBase;
@@ -70,6 +75,18 @@ static int process_response(LONG sock, const char *output_path, BPTR *file, BOOL
 static void update_progress(ULONG bytes_downloaded, LONG content_length);
 static void process_header_line(char *header_line, int *content_length, BOOL silent);
 static int open_output_file(BPTR *file, const char *output_path, BOOL silent);
+static BOOL ad_ctrl_c_pressed(void);
+
+static BOOL ad_ctrl_c_pressed(void)
+{
+    ULONG signal_mask = SetSignal(0L, 0L);
+    if (signal_mask & SIGBREAKF_CTRL_C)
+    {
+        SetSignal(0L, SIGBREAKF_CTRL_C);
+        return TRUE;
+    }
+    return FALSE;
+}
 
 /**
  * @brief Downloads a file via HTTP 1.0 protocol and saves it to disk
@@ -248,22 +265,39 @@ static int connect_to_server(const char *host, LONG *sock, BOOL silent)
         return AD_NOT_INITIALIZED;
     }
     
-    #ifdef DEBUG
-    if (!silent)
+    if (g_dns_cache_valid && strcmp(host, g_dns_cache_host) == 0)
     {
-        display_message(MSG_DEBUG,__FILE__,__LINE__, "Looking up host: %s (timeout: %lu)", host, timeout_secs);
-    }
-    #endif
-
-    /* Lookup hostname */
-    he = gethostbyname((STRPTR)host);
-    if (!he)
-    {
+        #ifdef DEBUG
         if (!silent)
         {
-            display_message(MSG_ERROR,__FILE__,__LINE__, "Host lookup failed for '%s' (h_errno: %d)", host, Errno());
+            display_message(MSG_DEBUG,__FILE__,__LINE__, "Using cached host lookup: %s (timeout: %lu)", host, timeout_secs);
         }
-        return AD_HOST_NOT_FOUND;
+        #endif
+    }
+    else
+    {
+        #ifdef DEBUG
+        if (!silent)
+        {
+            display_message(MSG_DEBUG,__FILE__,__LINE__, "Looking up host: %s (timeout: %lu)", host, timeout_secs);
+        }
+        #endif
+
+        /* Lookup hostname */
+        he = gethostbyname((STRPTR)host);
+        if (!he)
+        {
+            if (!silent)
+            {
+                display_message(MSG_ERROR,__FILE__,__LINE__, "Host lookup failed for '%s' (h_errno: %d)", host, Errno());
+            }
+            return AD_HOST_NOT_FOUND;
+        }
+
+        strncpy(g_dns_cache_host, host, MAX_HOST_LEN - 1);
+        g_dns_cache_host[MAX_HOST_LEN - 1] = '\0';
+        g_dns_cache_addr = *((ULONG *)he->h_addr);
+        g_dns_cache_valid = TRUE;
     }
     
     /* Create socket */
@@ -288,7 +322,7 @@ static int connect_to_server(const char *host, LONG *sock, BOOL silent)
     memset(&server, 0, sizeof(server));
     server.sin_family = AF_INET;
     server.sin_port = htons(80);
-    server.sin_addr.s_addr = *((ULONG *)he->h_addr);
+    server.sin_addr.s_addr = g_dns_cache_addr;
     
     /* Set socket to non-blocking mode for timeout control */
     if (IoctlSocket(*sock, FIONBIO, &non_blocking) < 0)
@@ -548,30 +582,53 @@ static int process_response(LONG sock, const char *output_path, BPTR *file, BOOL
     struct timeval current_time;              /* Current time */
     fd_set readfds;                           /* Read file descriptor set */
     struct timeval tv;                        /* Select timeout */
-    int dot_count = 0;                        /* Dots to display in waiting indicator */
     ULONG old_seconds = 0;                    /* Last seconds value for waiting dots */
     long non_blocking = 1;                    /* Socket non-blocking flag */
     int result;                               /* Result from helper functions */
+    ULONG timeout_secs = 30;                  /* Inactivity timeout in seconds */
+    ULONG wait_start_secs = 0;                /* Start time for initial response wait */
+    ULONG idle_start_secs = 0;                /* Start time for body/header inactivity */
+    ULONG last_wait_report_secs = 0;          /* Last second shown in wait feedback */
+    int wait_res;                             /* Result from WaitSelect */
     
+    /* Get configured timeout (minimum 1 second) */
+    ad_get_config_value(ADTAG_Timeout, &timeout_secs);
+    if (timeout_secs == 0)
+    {
+        timeout_secs = 1;
+    }
+
     /* Get starting time */
     GetSysTime(&current_time);
     old_seconds = current_time.tv_secs;
+    wait_start_secs = current_time.tv_secs;
+    idle_start_secs = current_time.tv_secs;
+    last_wait_report_secs = current_time.tv_secs;
     
     /* Set non-blocking mode for the socket */
     IoctlSocket(sock, FIONBIO, &non_blocking);
     
-    /* Wait for data with visual indicator */
+    /* Wait for first response bytes with timeout and visual indicator */
     while (1)
     {
         /* Check for data */
         FD_ZERO(&readfds);
         FD_SET(sock, &readfds);
         
-        /* Short timeout */
-        tv.tv_secs = 0;
-        tv.tv_micro = 100000; /* 0.1 seconds */
+        /* 1-second polling interval to update UI and enforce timeout */
+        tv.tv_secs = 1;
+        tv.tv_micro = 0;
         
-        if (WaitSelect(sock + 1, &readfds, NULL, NULL, &tv, NULL) > 0)
+        wait_res = WaitSelect(sock + 1, &readfds, NULL, NULL, &tv, NULL);
+        GetSysTime(&current_time);
+
+        if (ad_ctrl_c_pressed())
+        {
+            display_message(MSG_INFO,__FILE__,__LINE__, "Cancelled by user (Ctrl-C)");
+            return AD_CANCELLED;
+        }
+
+        if (wait_res > 0)
         {
             /* Data available */
             bytes = recv(sock, buffer, BUFFER_SIZE, 0);
@@ -603,26 +660,37 @@ static int process_response(LONG sock, const char *output_path, BPTR *file, BOOL
                 return AD_SOCKET_ERROR;
             }
         }
-        
-        /* Update waiting dots once per second */
-        GetSysTime(&current_time);
-        if (current_time.tv_secs > old_seconds)
+        else if (wait_res == 0)
         {
-            old_seconds = current_time.tv_secs;
-            dot_count = (dot_count + 1) % 4;
-            
-            /* Display updated dots */
-            display_message(MSG_PROGRESS,__FILE__,__LINE__, "Waiting for server response%.*s   ", 
-                           dot_count, "....");
+            ULONG elapsed_secs = current_time.tv_secs - wait_start_secs;
+
+            if (current_time.tv_secs > last_wait_report_secs)
+            {
+                last_wait_report_secs = current_time.tv_secs;
+                display_message(MSG_PROGRESS,__FILE__,__LINE__,
+                               "Waiting for server response %lu/%lu sec   ",
+                               elapsed_secs, timeout_secs);
+            }
+
+            if (elapsed_secs >= timeout_secs)
+            {
+                display_message(MSG_ERROR,__FILE__,__LINE__,
+                               "Timed out waiting for server response after %lu seconds",
+                               timeout_secs);
+                return AD_TIMEOUT;
+            }
+        }
+        else
+        {
+            if (!silent)
+            {
+                display_message(MSG_ERROR,__FILE__,__LINE__, "WaitSelect failed (errno: %d)", errno);
+            }
+            return AD_SOCKET_ERROR;
         }
         
-        /* Small delay to prevent tight loop */
-        Delay(1);
+        old_seconds = current_time.tv_secs;
     }
-    
-    /* Set socket back to blocking mode */
-    non_blocking = 0;
-    IoctlSocket(sock, FIONBIO, &non_blocking);
     
     /* Process the first received chunk */
     
@@ -783,22 +851,133 @@ static int process_response(LONG sock, const char *output_path, BPTR *file, BOOL
         }
         
         /* Need to get more data to find complete headers */
+        FD_ZERO(&readfds);
+        FD_SET(sock, &readfds);
+        tv.tv_secs = 1;
+        tv.tv_micro = 0;
+
+        wait_res = WaitSelect(sock + 1, &readfds, NULL, NULL, &tv, NULL);
+        GetSysTime(&current_time);
+
+        if (ad_ctrl_c_pressed())
+        {
+            display_message(MSG_INFO,__FILE__,__LINE__, "Cancelled by user (Ctrl-C)");
+            return AD_CANCELLED;
+        }
+
+        if (wait_res == 0)
+        {
+            ULONG idle_secs = current_time.tv_secs - idle_start_secs;
+            if (current_time.tv_secs > last_wait_report_secs)
+            {
+                last_wait_report_secs = current_time.tv_secs;
+                display_message(MSG_PROGRESS,__FILE__,__LINE__,
+                               "Waiting for HTTP headers... %lu/%lu sec   ",
+                               idle_secs, timeout_secs);
+            }
+            if (idle_secs >= timeout_secs)
+            {
+                display_message(MSG_ERROR,__FILE__,__LINE__,
+                               "Timed out waiting for HTTP headers after %lu seconds",
+                               timeout_secs);
+                return AD_TIMEOUT;
+            }
+            continue;
+        }
+        else if (wait_res < 0)
+        {
+            if (!silent)
+            {
+                display_message(MSG_ERROR,__FILE__,__LINE__, "WaitSelect failed (errno: %d)", errno);
+            }
+            return AD_SOCKET_ERROR;
+        }
+
         bytes = recv(sock, buffer, BUFFER_SIZE, 0);
         
         /* Handle error or EOF during header processing */
         if (bytes <= 0)
         {
+            if (bytes < 0 && errno == EWOULDBLOCK)
+            {
+                continue;
+            }
             if (!silent)
             {
                 display_message(MSG_ERROR,__FILE__,__LINE__, "Failed to receive complete headers");
             }
             return AD_HEADER_ERROR;
         }
+
+        idle_start_secs = current_time.tv_secs;
+        last_wait_report_secs = current_time.tv_secs;
     }
     
-    /* Download file body */
-    while ((bytes = recv(sock, buffer, BUFFER_SIZE, 0)) > 0)
+    /* Download file body with inactivity timeout */
+    while (1)
     {
+        FD_ZERO(&readfds);
+        FD_SET(sock, &readfds);
+        tv.tv_secs = 1;
+        tv.tv_micro = 0;
+
+        wait_res = WaitSelect(sock + 1, &readfds, NULL, NULL, &tv, NULL);
+        GetSysTime(&current_time);
+
+        if (ad_ctrl_c_pressed())
+        {
+            display_message(MSG_INFO,__FILE__,__LINE__, "Cancelled by user (Ctrl-C)");
+            return AD_CANCELLED;
+        }
+
+        if (wait_res == 0)
+        {
+            ULONG idle_secs = current_time.tv_secs - idle_start_secs;
+            if (current_time.tv_secs > last_wait_report_secs)
+            {
+                last_wait_report_secs = current_time.tv_secs;
+                display_message(MSG_PROGRESS,__FILE__,__LINE__,
+                               "Waiting for download data... %lu/%lu sec   ",
+                               idle_secs, timeout_secs);
+            }
+            if (idle_secs >= timeout_secs)
+            {
+                display_message(MSG_ERROR,__FILE__,__LINE__,
+                               "Timed out waiting for download data after %lu seconds",
+                               timeout_secs);
+                return AD_TIMEOUT;
+            }
+            continue;
+        }
+        else if (wait_res < 0)
+        {
+            if (!silent)
+            {
+                display_message(MSG_ERROR,__FILE__,__LINE__, "WaitSelect failed (errno: %d)", errno);
+            }
+            return AD_SOCKET_ERROR;
+        }
+
+        bytes = recv(sock, buffer, BUFFER_SIZE, 0);
+
+        if (bytes == 0)
+        {
+            break;
+        }
+
+        if (bytes < 0)
+        {
+            if (errno == EWOULDBLOCK)
+            {
+                continue;
+            }
+            if (!silent)
+            {
+                display_message(MSG_ERROR,__FILE__,__LINE__, "Receive failed (errno: %d)", errno);
+            }
+            return AD_SOCKET_ERROR;
+        }
+
         /* Write received data to file */
         if (Write(*file, buffer, bytes) != bytes)
         {
@@ -809,26 +988,19 @@ static int process_response(LONG sock, const char *output_path, BPTR *file, BOOL
             return AD_FILE_ERROR;
         }
         total_bytes_downloaded += bytes;
+        idle_start_secs = current_time.tv_secs;
         
         /* Update progress display once per second */
-        GetSysTime(&current_time);
         if (current_time.tv_secs > last_update_time)
         {
             last_update_time = current_time.tv_secs;
             update_progress(total_bytes_downloaded, content_length);
         }
     }
-    
-    /* Check for error during download */
-    if (bytes < 0)
-    {
-        if (!silent)
-        {
-            
-            display_message(MSG_ERROR,__FILE__,__LINE__, "Receive failed (errno: %d)", errno);
-        }
-        return AD_SOCKET_ERROR;
-    }
+
+    /* Restore blocking mode before returning */
+    non_blocking = 0;
+    IoctlSocket(sock, FIONBIO, &non_blocking);
     
     /* Download successful */
     if (!silent)

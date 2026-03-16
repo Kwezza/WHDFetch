@@ -981,6 +981,7 @@ static BOOL extract_get_top_level_directory_from_lha(const char *archive_path,
     char list_command[EXTRACT_MAX_PATH * 2] = {0};
     FILE *listing_file;
     char line[EXTRACT_MAX_PATH] = {0};
+    char path_prefix[EXTRACT_MAX_PATH] = {0};
 
     if (archive_path == NULL || out_folder_name == NULL || out_folder_name_size == 0)
     {
@@ -1014,20 +1015,58 @@ static BOOL extract_get_top_level_directory_from_lha(const char *archive_path,
 
     while (fgets(line, sizeof(line), listing_file) != NULL)
     {
-        char *slash = strchr(line, '/');
+        char *slash;
+        size_t prefix_len;
+        char *folder_start;
+
+        if (strstr(line, "Listing of archive") != NULL)
+        {
+            continue;
+        }
+
+        remove_CR_LF_from_string(line);
+        trim(line);
+
+        if (line[0] == '\0')
+        {
+            continue;
+        }
+
+        slash = strchr(line, '/');
         if (slash != NULL)
         {
-            size_t len = (size_t)(slash - line);
-            if (len > 0 && len < out_folder_name_size)
+            prefix_len = (size_t)(slash - line);
+            if (prefix_len > 0 && prefix_len < sizeof(path_prefix))
             {
-                strncpy(out_folder_name, line, len);
-                out_folder_name[len] = '\0';
+                strncpy(path_prefix, line, prefix_len);
+                path_prefix[prefix_len] = '\0';
+                trim(path_prefix);
+
+                folder_start = path_prefix + strlen(path_prefix);
+                while (folder_start > path_prefix && !isspace((unsigned char)folder_start[-1]))
+                {
+                    folder_start--;
+                }
+
+                if (folder_start[0] == '\0' || strlen(folder_start) >= out_folder_name_size)
+                {
+                    continue;
+                }
+
+                strncpy(out_folder_name, folder_start, out_folder_name_size - 1);
+                out_folder_name[out_folder_name_size - 1] = '\0';
                 remove_CR_LF_from_string(out_folder_name);
                 trim(out_folder_name);
                 sanitize_amiga_file_path(out_folder_name);
+
+                if (out_folder_name[0] == '\0')
+                {
+                    continue;
+                }
+
                 fclose(listing_file);
                 DeleteFile(EXTRACT_LISTING_FILE);
-                return (out_folder_name[0] != '\0') ? TRUE : FALSE;
+                return TRUE;
             }
         }
     }

@@ -644,7 +644,7 @@ int main(int argc, char *argv[])
         log_info(LOG_GENERAL, "main: calling ad_init_download_lib_taglist...\n");
         if (!ad_init_download_lib_taglist(
                 ADTAG_Verbose, FALSE,             
-                ADTAG_Timeout, 60,               
+            ADTAG_Timeout, 30,               
                 ADTAG_BufferSize, 16384,         
                 ADTAG_UserAgent, "AmigaRetroplayDownloader/1.0", 
                 ADTAG_MaxRetries, 2,             
@@ -663,7 +663,7 @@ int main(int argc, char *argv[])
 
 
     sprintf(temp_string, "%s/index.html", DIR_TEMP);
-    download_result = ad_download_http_file(DOWNLOAD_WEBSITE, temp_string, TRUE);
+    download_result = ad_download_http_file_with_retries(DOWNLOAD_WEBSITE, temp_string, TRUE);
 
     if (download_result != AD_SUCCESS)
     {
@@ -1170,7 +1170,7 @@ int download_WHDLoadPacks_From_Links(const char *bufferm, struct whdload_pack_de
                                 sprintf(download_address, "%s/%s", DOWNLOAD_WEBSITE,link);
                                 g_html_scan_stats.downloads_triggered++;
                                 log_info(LOG_GENERAL, "html: downloading dat zip from '%s' to '%s'\n", download_address, file_path_to_save);
-                                download_result = ad_download_http_file(download_address, file_path_to_save, TRUE);
+                                download_result = ad_download_http_file_with_retries(download_address, file_path_to_save, TRUE);
                                 log_info(LOG_GENERAL, "html: download result=%ld file='%s'\n", (long)download_result, fileName);
                             /* Legacy wget shell command removed; direct download API is used instead. */
                             //SystemTagList(downloadCommand, NULL);
@@ -1905,6 +1905,7 @@ LONG execute_archive_download_command(const char *downloadWHDFile,
     char formattedFileName[256] = {0};
     char formattedFileNameP2[256] = {0};
     char matchedExtractFolder[EXTRACT_MAX_PATH] = {0};
+    BOOL download_silent = FALSE;
     LONG extractCode;
     LONG returnCode;
 
@@ -1926,9 +1927,26 @@ LONG execute_archive_download_command(const char *downloadWHDFile,
         }
         if (download_options != NULL && download_options->extract_archives == TRUE)
         {
-            log_info(LOG_GENERAL,
-                     "extract: archive '%s' already exists; extraction runs post-download in normal mode. Use EXTRACTONLY to process existing archives.\n",
-                     downloadWHDFile);
+            extractCode = extract_process_downloaded_archive(fileName,
+                                                             downloadWHDFile,
+                                                             WHDLoadPackDefs->extracted_pack_dir,
+                                                             downloadFirstLetter,
+                                                             WHDLoadPackDefs->full_text_name_of_pack,
+                                                             download_options);
+
+            if (extractCode != EXTRACT_RESULT_OK)
+            {
+                log_warning(LOG_GENERAL,
+                            "extract: existing archive '%s' failed extraction check/recovery (code=%ld), continuing\n",
+                            downloadWHDFile,
+                            (long)extractCode);
+            }
+            else
+            {
+                log_debug(LOG_GENERAL,
+                          "extract: existing archive '%s' passed extraction check/recovery\n",
+                          downloadWHDFile);
+            }
         }
         files_skipped = files_skipped + 1;
         WHDLoadPackDefs->count_existing_files_skipped = WHDLoadPackDefs->count_existing_files_skipped + 1;
@@ -1962,13 +1980,24 @@ LONG execute_archive_download_command(const char *downloadWHDFile,
 
     Format_text_split_by_Caps(downloadWHDFile, formattedFileName, sizeof(formattedFileName));
     turn_filename_into_text_with_spaces(downloadWHDFile, formattedFileNameP2);
-    printf("\n" textReset textBold "Downloading %s " textReset "(%s) (Ctrl-c to cancel)" textBlue ".\n", formattedFileName, formattedFileNameP2);
+    printf("\n" textReset textBold "Downloading %s " textReset "(%s) (Ctrl-c to cancel)" textBlue ".\n\n", formattedFileName, formattedFileNameP2);
 
     create_directory_based_on_filename(WHDLoadPackDefs->extracted_pack_dir, downloadWHDFile);
     sprintf(downloadUrl, "%s%s/%s", WHDLoadPackDefs->download_url, downloadFirstLetter, downloadWHDFile);
 
+    if (download_options != NULL && download_options->quiet_output == TRUE)
+    {
+        download_silent = TRUE;
+    }
+
     /* Keep archive downloads visible; QUIET currently only suppresses UnZip output. */
-    returnCode = (LONG)ad_download_http_file(downloadUrl, fileName, FALSE);
+    returnCode = (LONG)ad_download_http_file_with_retries(downloadUrl, fileName, download_silent);
+
+    if (returnCode == AD_CANCELLED)
+    {
+        log_info(LOG_DOWNLOAD, "download: user cancelled '%s' via Ctrl-C\n", downloadWHDFile);
+        return 20;
+    }
 
     if (returnCode != 0)
     {

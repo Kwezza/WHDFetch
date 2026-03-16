@@ -1,0 +1,6 @@
+ WHDDownloader DOWNLOADBETADEMOS QUIET extractto=PC:Programming/WHDDownloader/Bin/Amiga/extracted 
+ WHDDownloader DOWNLOADBETADEMOS QUIET extractto=PC:Programming/WHDDownloader/Bin/Amiga/extracted DELETEARCHIVES 
+
+
+ DELETE PC:Programming/WHDDownloader/Bin/Amiga/extracted PC:Programming/WHDDownloader/Bin/Amiga/GameFiles PC:Programming/WHDDownloader/Bin/Amiga/temp ALL 
+ makedir Extracted 

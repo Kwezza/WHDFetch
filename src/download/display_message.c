@@ -50,14 +50,14 @@ void display_message(int msg_type, const char *file, int line, const char *forma
         /* Only display debug messages if DEBUG is defined */
         /* Include filename and line information for debug messages */
         char debug_prefix[128]; /* Buffer for debug prefix */
-        sprintf(debug_prefix, "[%s:%d]: ", filename, line);
+        snprintf(debug_prefix, sizeof(debug_prefix), "[%s:%d]: ", filename, line);
         PutStr(debug_prefix);
     }
 #endif
 
     /* Format the message */
     va_start(args, format);
-    vsprintf(buffer, format, args);
+    vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
 
     /* Handle different message types */
@@ -228,6 +228,10 @@ void ad_print_download_error(int error_code)
 
     case AD_TIMEOUT:
         error_message = "Connection timed out";
+        break;
+
+    case AD_CANCELLED:
+        error_message = "Operation cancelled by user";
         break;
 
     case AD_BAD_REQUEST:

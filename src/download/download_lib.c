@@ -77,6 +77,37 @@ static ULONG config_buffer_size;            /* Current buffer size */
 static STRPTR config_user_agent;            /* Current user agent string */
 static ULONG config_max_retries;            /* Maximum connection retries */
 
+static BOOL ad_is_retryable_download_error(int error_code)
+{
+    switch (error_code)
+    {
+        case AD_TIMEOUT:
+        case AD_SOCKET_ERROR:
+        case AD_CONNECT_ERROR:
+        case AD_CONNECTION_ERROR:
+            return TRUE;
+        default:
+            return FALSE;
+    }
+}
+
+static const char *ad_retry_reason_text(int error_code)
+{
+    switch (error_code)
+    {
+        case AD_TIMEOUT:
+            return "timeout";
+        case AD_SOCKET_ERROR:
+            return "socket error";
+        case AD_CONNECT_ERROR:
+            return "connect error";
+        case AD_CONNECTION_ERROR:
+            return "connection closed";
+        default:
+            return "transient error";
+    }
+}
+
 /*------------------------------------------------------------------------*/
 
 /**
@@ -310,6 +341,74 @@ BOOL ad_get_config_value(ULONG tag, APTR storage)
             return FALSE;
     }
 } /* ad_get_config_value */
+
+/*------------------------------------------------------------------------*/
+
+/**
+ * @brief Downloads a file via HTTP with retry support for transient network failures
+ *
+ * Retries are limited to timeout/socket/connect/connection errors and use
+ * short exponential backoff (1s, 2s, 4s...).
+ */
+int ad_download_http_file_with_retries(const char *url, const char *output_path, BOOL silent)
+{
+    ULONG max_retries = 0;
+    ULONG attempt = 0;
+    ULONG backoff_seconds = 1;
+    int result = AD_ERROR;
+
+    if (!lib_initialized)
+    {
+        return AD_NOT_INITIALIZED;
+    }
+
+    if (!ad_get_config_value(ADTAG_MaxRetries, &max_retries))
+    {
+        max_retries = default_max_retries;
+    }
+
+    while (attempt <= max_retries)
+    {
+        result = ad_download_http_file(url, output_path, silent);
+        if (result == AD_SUCCESS)
+        {
+            return AD_SUCCESS;
+        }
+
+        if (!ad_is_retryable_download_error(result))
+        {
+            return result;
+        }
+
+        if (attempt == max_retries)
+        {
+            return result;
+        }
+
+        printf("Retry %ld/%ld after %s in %ld second%s...\n",
+               (long)(attempt + 1),
+               (long)max_retries,
+               ad_retry_reason_text(result),
+               (long)backoff_seconds,
+               (backoff_seconds == 1) ? "" : "s");
+
+        if (output_path && output_path[0] != '\0')
+        {
+            DeleteFile((STRPTR)output_path);
+        }
+
+        Delay(backoff_seconds * 50); /* Amiga DOS ticks are 1/50 sec */
+
+        if (backoff_seconds < 8)
+        {
+            backoff_seconds <<= 1;
+        }
+
+        attempt++;
+    }
+
+    return result;
+}
 
 /*------------------------------------------------------------------------*/
 

@@ -75,6 +75,7 @@
 #define AD_NOT_INITIALIZED     -2  /* Library not initialized */
 #define AD_MEMORY_ERROR        -3  /* Memory allocation failed */
 #define AD_TIMEOUT             -4  /* Operation timed out */
+#define AD_CANCELLED           -5  /* Operation cancelled by user (Ctrl-C) */
 
 /* URL and connection error codes */
 #define AD_INVALID_URL         -10 /* Invalid URL format */
@@ -172,6 +173,19 @@ BOOL ad_is_library_initialized(void);
  * @return AD_SUCCESS on success, or one of the error codes defined above
  */
 int ad_download_http_file(const char *url, const char *output_path, BOOL silent);
+
+/**
+ * @brief Downloads a file via HTTP with automatic retry for transient network errors
+ *
+ * Retries are controlled by ADTAG_MaxRetries from library initialization.
+ * A value of 2 means: 1 initial attempt + 2 retries (3 total attempts).
+ *
+ * @param url The HTTP URL to download (must start with "http://")
+ * @param output_path Path where the downloaded file should be saved
+ * @param silent If TRUE, suppresses all non-critical progress/error messages
+ * @return AD_SUCCESS on success, or one of the error codes defined above
+ */
+int ad_download_http_file_with_retries(const char *url, const char *output_path, BOOL silent);
 
 /**
  * @brief Verifies if a file matches the expected CRC-32 checksum
