@@ -1,15 +1,15 @@
-# WHDDownloader — CLI Reference
+# whdfetch — CLI Reference
 
 This document provides an in-depth description of every command-line argument accepted by
-WHDDownloader. It is intended as source material for the user-facing instruction manual and
+whdfetch. It is intended as source material for the user-facing instruction manual and
 README file.
 
-Running WHDDownloader without any arguments displays the built-in help screen and exits.
+Running whdfetch without any arguments displays the built-in help screen and exits.
 
 **General syntax:**
 
 ```text
-WHDDownloader [COMMAND...] [OPTION...]
+whdfetch [COMMAND...] [OPTION...]
 ```
 
 Arguments are case-insensitive and can be given in any order.
@@ -58,7 +58,7 @@ Selects the **Games** pack for processing. Archives are stored under
 **Example:**
 
 ```text
-WHDDownloader DOWNLOADGAMES
+whdfetch DOWNLOADGAMES
 ```
 
 Downloads and processes the full Games pack. Already-downloaded archives are skipped
@@ -73,7 +73,7 @@ are still in development or were produced by unofficial sources. Archives are st
 **Example:**
 
 ```text
-WHDDownloader DOWNLOADBETAGAMES
+whdfetch DOWNLOADBETAGAMES
 ```
 
 ### DOWNLOADDEMOS
@@ -83,7 +83,7 @@ Selects the **Demos** pack. Archives are stored under `GameFiles/Demos/<letter>/
 **Example:**
 
 ```text
-WHDDownloader DOWNLOADDEMOS
+whdfetch DOWNLOADDEMOS
 ```
 
 ### DOWNLOADBETADEMOS
@@ -94,7 +94,7 @@ Selects the **Demos (Beta & Unofficial)** pack. Archives are stored under
 **Example:**
 
 ```text
-WHDDownloader DOWNLOADBETADEMOS
+whdfetch DOWNLOADBETADEMOS
 ```
 
 ### DOWNLOADMAGS
@@ -105,7 +105,7 @@ Selects the **Magazines** pack. Archives are stored under
 **Example:**
 
 ```text
-WHDDownloader DOWNLOADMAGS
+whdfetch DOWNLOADMAGS
 ```
 
 ### DOWNLOADALL
@@ -117,13 +117,13 @@ pack-selection command on the same line.
 **Example:**
 
 ```text
-WHDDownloader DOWNLOADALL
+whdfetch DOWNLOADALL
 ```
 
 Equivalent to:
 
 ```text
-WHDDownloader DOWNLOADGAMES DOWNLOADBETAGAMES DOWNLOADDEMOS DOWNLOADBETADEMOS DOWNLOADMAGS
+whdfetch DOWNLOADGAMES DOWNLOADBETAGAMES DOWNLOADDEMOS DOWNLOADBETADEMOS DOWNLOADMAGS
 ```
 
 ---
@@ -157,13 +157,13 @@ is reported for individual missing files.
 **Example — extract previously downloaded Games archives:**
 
 ```text
-WHDDownloader DOWNLOADGAMES EXTRACTONLY
+whdfetch DOWNLOADGAMES EXTRACTONLY
 ```
 
 **Example — extract all packs to an external volume:**
 
 ```text
-WHDDownloader DOWNLOADALL EXTRACTONLY EXTRACTTO=Games:
+whdfetch DOWNLOADALL EXTRACTONLY EXTRACTTO=Games:
 ```
 
 ### HELP
@@ -174,14 +174,14 @@ immediately before any normal pack-selection, download, or extraction logic runs
 **Example:**
 
 ```text
-WHDDownloader HELP
+whdfetch HELP
 ```
 
 ---
 
 ## Extraction Options
 
-By default, WHDDownloader extracts archives immediately after downloading them (`.lha` and `.lzx`).
+By default, whdfetch extracts archives immediately after downloading them (`.lha` and `.lzx`).
 The extraction pipeline performs these steps:
 
 1. Runs `c:lha` for `.lha` archives or `c:unlzx` for `.lzx` archives
@@ -218,7 +218,7 @@ extraction on.
 **Example — download without extracting:**
 
 ```text
-WHDDownloader DOWNLOADGAMES NOEXTRACT
+whdfetch DOWNLOADGAMES NOEXTRACT
 ```
 
 ### EXTRACTTO=<path>
@@ -249,13 +249,13 @@ downloaded archives.
 **Example — extract to an external drive:**
 
 ```text
-WHDDownloader DOWNLOADGAMES EXTRACTTO=Games:
+whdfetch DOWNLOADGAMES EXTRACTTO=Games:
 ```
 
 **Example — extract all packs to a separate partition:**
 
 ```text
-WHDDownloader DOWNLOADALL EXTRACTTO=Work:WHDLoad/
+whdfetch DOWNLOADALL EXTRACTTO=Work:WHDLoad/
 ```
 
 ### KEEPARCHIVES
@@ -276,7 +276,7 @@ final effective setting can apply.
 **Example — download, extract, but keep the archive files:**
 
 ```text
-WHDDownloader DOWNLOADGAMES KEEPARCHIVES
+whdfetch DOWNLOADGAMES KEEPARCHIVES
 ```
 
 ### DELETEARCHIVES
@@ -297,7 +297,7 @@ used.
 **Example — force archive deletion even if INI says keep them:**
 
 ```text
-WHDDownloader DOWNLOADGAMES DELETEARCHIVES
+whdfetch DOWNLOADGAMES DELETEARCHIVES
 ```
 
 ### FORCEEXTRACT
@@ -328,20 +328,20 @@ Use both together for a full rebuild.
 **Example — re-extract all Games archives:**
 
 ```text
-WHDDownloader DOWNLOADGAMES FORCEEXTRACT
+whdfetch DOWNLOADGAMES FORCEEXTRACT
 ```
 
 **Example — re-extract everything from scratch:**
 
 ```text
-WHDDownloader DOWNLOADALL FORCEEXTRACT FORCEDOWNLOAD
+whdfetch DOWNLOADALL FORCEEXTRACT FORCEDOWNLOAD
 ```
 
 ---
 
 ## Download Skip Options
 
-WHDDownloader has two layers of skip logic to avoid redundant work:
+whdfetch has two layers of skip logic to avoid redundant work:
 
 1. **Local archive skip:** if the `.lha` file already exists on disk, the download is
    skipped. The existing archive is still passed to the extraction pipeline.
@@ -371,7 +371,7 @@ re-extract only the archives that are missing from disk.
 **Example:**
 
 ```text
-WHDDownloader DOWNLOADGAMES NODOWNLOADSKIP
+whdfetch DOWNLOADGAMES NODOWNLOADSKIP
 ```
 
 ### FORCEDOWNLOAD
@@ -395,13 +395,13 @@ connections.
 **Example — force full re-download of Games:**
 
 ```text
-WHDDownloader DOWNLOADGAMES FORCEDOWNLOAD
+whdfetch DOWNLOADGAMES FORCEDOWNLOAD
 ```
 
 **Example — full clean re-download and re-extract:**
 
 ```text
-WHDDownloader DOWNLOADGAMES FORCEDOWNLOAD FORCEEXTRACT
+whdfetch DOWNLOADGAMES FORCEDOWNLOAD FORCEEXTRACT
 ```
 
 ---
@@ -426,7 +426,7 @@ filter if you are targeting an OCS or ECS Amiga such as an A500, A600, or A2000.
 **Example — download games but skip AGA titles:**
 
 ```text
-WHDDownloader DOWNLOADGAMES SKIPAGA
+whdfetch DOWNLOADGAMES SKIPAGA
 ```
 
 
@@ -434,7 +434,7 @@ WHDDownloader DOWNLOADGAMES SKIPAGA
 
 ### INI: timeout_seconds
 
-Set `timeout_seconds` in the `[global]` section of `PROGDIR:WHDDownloader.ini` to adjust the
+Set `timeout_seconds` in the `[global]` section of `PROGDIR:whdfetch.ini` to adjust the
 default timeout for every run. The CLI `TIMEOUT=<seconds>` argument still overrides this value
 for the current invocation, but the INI provides a persistent fallback.
 
@@ -451,7 +451,7 @@ WHDLoad setup.
 **Example:**
 
 ```text
-WHDDownloader DOWNLOADGAMES SKIPCD
+whdfetch DOWNLOADGAMES SKIPCD
 ```
 
 ### SKIPNTSC
@@ -463,7 +463,7 @@ in Europe, some NTSC games may have timing or display issues.
 **Example:**
 
 ```text
-WHDDownloader DOWNLOADGAMES SKIPNTSC
+whdfetch DOWNLOADGAMES SKIPNTSC
 ```
 
 ### SKIPNONENGLISH
@@ -479,7 +479,7 @@ this filter is active.
 **Example — download only English-language games:**
 
 ```text
-WHDDownloader DOWNLOADGAMES SKIPNONENGLISH
+whdfetch DOWNLOADGAMES SKIPNONENGLISH
 ```
 
 ### Combining Filters
@@ -490,7 +490,7 @@ Filters are cumulative. An archive must pass every enabled filter to be processe
 non-English:**
 
 ```text
-WHDDownloader DOWNLOADGAMES SKIPAGA SKIPCD SKIPNTSC SKIPNONENGLISH
+whdfetch DOWNLOADGAMES SKIPAGA SKIPCD SKIPNTSC SKIPNONENGLISH
 ```
 
 ---
@@ -499,7 +499,7 @@ WHDDownloader DOWNLOADGAMES SKIPAGA SKIPCD SKIPNTSC SKIPNONENGLISH
 
 ### TIMEOUT=<seconds>
 
-Controls the maximum number of seconds WHDDownloader waits for any HTTP activity before
+Controls the maximum number of seconds whdfetch waits for any HTTP activity before
 aborting the current transfer. The timeout applies to every HTTP download the program performs
 during a run: the index.html fetch, the ZIP/DAT downloads, and the individual `.lha` pack
 downloads. A timeout is triggered from the shared download library whenever a socket stays idle
@@ -512,7 +512,7 @@ it. CLI arguments are evaluated after the INI, so `TIMEOUT=45` will supersede an
 **Example — increase the timeout for a slow connection:**
 
 ```text
-WHDDownloader DOWNLOADALL TIMEOUT=45
+whdfetch DOWNLOADALL TIMEOUT=45
 ```
 
 ## Output and Reporting Options
@@ -530,7 +530,7 @@ files.
 **Example:**
 
 ```text
-WHDDownloader DOWNLOADALL NOSKIPREPORT
+whdfetch DOWNLOADALL NOSKIPREPORT
 ```
 
 ### QUIET
@@ -544,7 +544,7 @@ extraction output.
 **Example:**
 
 ```text
-WHDDownloader DOWNLOADGAMES QUIET
+whdfetch DOWNLOADGAMES QUIET
 ```
 
 ---
@@ -567,21 +567,21 @@ unsnapshot.
 There is no separate CLI switch for icon unsnapshotting. It is an internal part of the
 custom-icon workflow, so disabling custom icons also disables unsnapshotting.
 
-**Use case:** you have your own icon set and do not want WHDDownloader overwriting your
+**Use case:** you have your own icon set and do not want whdfetch overwriting your
 drawer icons, or you are running in a headless or scripted configuration where icons are
 irrelevant.
 
 **Example:**
 
 ```text
-WHDDownloader DOWNLOADGAMES NOICONS
+whdfetch DOWNLOADGAMES NOICONS
 ```
 
 ---
 
 ## INI File Interaction
 
-Most options have corresponding keys in `PROGDIR:WHDDownloader.ini`. The precedence order
+Most options have corresponding keys in `PROGDIR:whdfetch.ini`. The precedence order
 is:
 
 1. **Compiled defaults** — built into the program
@@ -676,7 +676,7 @@ are internal behaviour flags shown for completeness.
 ### First-time full download
 
 ```text
-WHDDownloader DOWNLOADALL
+whdfetch DOWNLOADALL
 ```
 
 Downloads all packs, extracts every archive, deletes `.lha` files after extraction,
@@ -685,7 +685,7 @@ applies custom icons, and builds the `.archive_index` cache.
 ### Update run, typical ongoing use
 
 ```text
-WHDDownloader DOWNLOADALL NOSKIPREPORT
+whdfetch DOWNLOADALL NOSKIPREPORT
 ```
 
 Downloads only new or updated archives. Everything already extracted is skipped
@@ -694,20 +694,20 @@ automatically. Skip messages are suppressed for cleaner output.
 ### Download now, extract later
 
 ```text
-WHDDownloader DOWNLOADGAMES NOEXTRACT KEEPARCHIVES
+whdfetch DOWNLOADGAMES NOEXTRACT KEEPARCHIVES
 ```
 
 Downloads all Games `.lha` files but does not extract them. Archives are preserved on disk.
 You can extract them later with:
 
 ```text
-WHDDownloader DOWNLOADGAMES EXTRACTONLY
+whdfetch DOWNLOADGAMES EXTRACTONLY
 ```
 
 ### Extract to an external drive
 
 ```text
-WHDDownloader DOWNLOADGAMES EXTRACTTO=Games: KEEPARCHIVES
+whdfetch DOWNLOADGAMES EXTRACTTO=Games: KEEPARCHIVES
 ```
 
 Downloads games, extracts them to the `Games:` volume, and keeps the `.lha` archives in
@@ -716,7 +716,7 @@ Downloads games, extracts them to the `Games:` volume, and keeps the `.lha` arch
 ### Re-extract everything from scratch
 
 ```text
-WHDDownloader DOWNLOADGAMES FORCEEXTRACT
+whdfetch DOWNLOADGAMES FORCEEXTRACT
 ```
 
 Use this when the archives are already present locally and you want to rebuild the
@@ -725,7 +725,7 @@ extracted folders without re-downloading the `.lha` files.
 ### Full clean rebuild
 
 ```text
-WHDDownloader DOWNLOADALL FORCEDOWNLOAD FORCEEXTRACT
+whdfetch DOWNLOADALL FORCEDOWNLOAD FORCEEXTRACT
 ```
 
 Use this when you want to ignore both local archive presence and prior extraction markers.
@@ -734,7 +734,7 @@ This is the nuclear option and will take considerable time and bandwidth.
 ### OCS-only English PAL setup
 
 ```text
-WHDDownloader DOWNLOADGAMES SKIPAGA SKIPCD SKIPNTSC SKIPNONENGLISH
+whdfetch DOWNLOADGAMES SKIPAGA SKIPCD SKIPNTSC SKIPNONENGLISH
 ```
 
 Downloads only games that should suit a base PAL OCS Amiga setup in English.
@@ -746,7 +746,7 @@ Downloads only games that should suit a base PAL OCS Amiga setup in English.
 ### Conflicting archive-retention commands
 
 ```text
-WHDDownloader DOWNLOADGAMES KEEPARCHIVES DELETEARCHIVES
+whdfetch DOWNLOADGAMES KEEPARCHIVES DELETEARCHIVES
 ```
 
 These commands oppose each other. Only one should be used.
@@ -754,7 +754,7 @@ These commands oppose each other. Only one should be used.
 ### Contradictory extraction mode commands
 
 ```text
-WHDDownloader DOWNLOADGAMES EXTRACTONLY NOEXTRACT
+whdfetch DOWNLOADGAMES EXTRACTONLY NOEXTRACT
 ```
 
 `EXTRACTONLY` forces extraction, so `NOEXTRACT` is ignored.
@@ -762,7 +762,7 @@ WHDDownloader DOWNLOADGAMES EXTRACTONLY NOEXTRACT
 ### Semantically contradictory, though safe
 
 ```text
-WHDDownloader DOWNLOADGAMES NOEXTRACT DELETEARCHIVES
+whdfetch DOWNLOADGAMES NOEXTRACT DELETEARCHIVES
 ```
 
 `DELETEARCHIVES` has no effect because archive deletion only happens after extraction.

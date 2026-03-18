@@ -1,4 +1,4 @@
-# AGENTS.md — WHDDownloader Agent Guide
+# AGENTS.md — whdfetch Agent Guide
 
 This file is for AI coding agents (GitHub Copilot, Claude, etc.). It describes the
 **operational rules, task patterns, and module ownership** for this codebase.
@@ -52,7 +52,7 @@ make clean; make CONSOLE=1
 make AUTO=0 CONSOLE=1
 ```
 
-After building, the binary appears at `Bin/Amiga/WHDDownloader`. If WinUAE is running
+After building, the binary appears at `Bin/Amiga/whdfetch`. If WinUAE is running
 with the shared drive mapped, it is immediately available for testing.
 
 Check `Bin/Amiga/logs/` for runtime output. Errors go to `errors_*.log` regardless of
@@ -132,7 +132,9 @@ Academy_v1.2.lha
 Line 1: category display name. Line 2: exact archive filename. If line 2 matches the
 incoming archive name, skip extraction (unless `FORCEEXTRACT`).
 
-### INI file (`PROGDIR:WHDDownloader.ini`)
+### INI file (`PROGDIR:whdfetch.ini`)
+
+Legacy fallback is also supported via `PROGDIR:WHDDownloader.ini`.
 
 Optional. Parsed by `ini_parser.c`. Sections: `[global]`, `[filters]`, `[pack.<type>]`.
 Boolean values accept `true`/`false`, `yes`/`no`, `1`/`0`.
@@ -153,7 +155,7 @@ Boolean values accept `true`/`false`, `yes`/`no`, `1`/`0`.
 1. Add parsing in `ini_parser.c` — use existing key blocks as a pattern
 2. `amiga_strdup()` for string values; use `ini_parser_cleanup_overrides()` to free them
 3. Expose via an accessor or by writing directly into `download_option` / `whdload_pack_def`
-4. Add the key to `docs/WHDDownloader.ini.sample` with a comment
+4. Add the key to `docs/whdfetch.ini.sample` with a comment
 
 ### Modify skip/filter logic
 

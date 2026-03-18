@@ -420,7 +420,7 @@ static BOOL index_write_file(const char *index_path, const archive_index_cache *
     }
 
     if (fprintf(index_file,
-                "# WHDDownloader archive index (auto-generated)\n"
+                "# Retroplay WHD Downloader archive index (auto-generated)\n"
                 "# Maps archive filename to extracted folder name.\n"
                 "# Format: <archive_filename>\\t<folder_name>\n") < 0)
     {

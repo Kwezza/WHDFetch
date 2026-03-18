@@ -1,8 +1,8 @@
-# WHDDownloader — Project Overview
+# Retroplay WHD Downloader — Project Overview
 
 ## What it is
 
-WHDDownloader is a **pure CLI tool** for AmigaOS 3.0+ that automates the full download
+Retroplay WHD Downloader is a **pure CLI tool** for AmigaOS 3.0+ that automates the full download
 and installation of WHDLoad game, demo, and magazine packs from the Retroplay FTP site.
 It replaces the manual process of browsing the site, downloading archives, extracting
 them, and organising them into the correct folder structure on Amiga storage.
@@ -92,21 +92,22 @@ Games
 Academy_v1.2.lha
 ```
 Line 1 is the category display name; line 2 is the exact archive filename.
-When WHDDownloader checks whether to re-download or re-extract a title it reads this
+When whdfetch checks whether to re-download or re-extract a title it reads this
 marker. If line 2 matches the incoming archive name, the operation is skipped.
 Use `FORCEEXTRACT` or `FORCEDOWNLOAD` to override.
 
 ### Icon replacement
-After extraction, WHDDownloader can replace the `.info` (icon) files placed by the
+After extraction, whdfetch can replace the `.info` (icon) files placed by the
 WHDLoad slave with custom ones from `PROGDIR:Icons/`:
 - Letter icons: `A.info` … `Z.info` for `GameFiles/<pack>/A/`, etc.
 - Game icons: `WHD folder.info` replaces each extracted game's `.info`
 - Optionally runs `icon_unsnapshot` to clear saved X/Y snap positions
 
 ### INI configuration
-`PROGDIR:WHDDownloader.ini` (optional) overrides built-in defaults.
+`PROGDIR:whdfetch.ini` (optional) overrides built-in defaults.
+If only legacy `PROGDIR:WHDDownloader.ini` exists, it is used as fallback.
 CLI arguments always take precedence over INI values.
-See `docs/WHDDownloader.ini.sample` for a fully annotated sample.
+See `docs/whdfetch.ini.sample` for a fully annotated sample.
 
 ---
 
@@ -127,9 +128,9 @@ because it processes large DAT files and performs many filesystem operations.
 ## Directory layout at runtime
 
 ```
-PROGDIR:                           (the directory containing WHDDownloader)
-├── WHDDownloader                  binary
-├── WHDDownloader.ini              optional config
+PROGDIR:                           (the directory containing whdfetch)
+├── whdfetch                       binary
+├── whdfetch.ini                   optional config
 ├── GameFiles/
 │   ├── Games/
 │   │   ├── A/
@@ -165,7 +166,7 @@ PROGDIR:                           (the directory containing WHDDownloader)
 ```
 src/
 ├── main.c / main.h               Entry point, CLI parsing, 5-pack loop, do_shutdown()
-├── ini_parser.c/h                WHDDownloader.ini → runtime overrides
+├── ini_parser.c/h                whdfetch.ini (legacy fallback supported) → runtime overrides
 ├── gamefile_parser.c/h           <rom name="..."> → game_metadata struct
 ├── utilities.c/h                 String/file helpers, WB version detection
 ├── cli_utilities.c/h             Console cursor and size detection
@@ -197,7 +198,7 @@ src/
 ## Build overview
 
 ```powershell
-make                    # release build → Bin/Amiga/WHDDownloader
+make                    # release build → Bin/Amiga/whdfetch
 make CONSOLE=1          # with console (printf visible in Shell)
 make MEMTRACK=1         # with allocation/leak tracking
 make CONSOLE=1 MEMTRACK=1
@@ -206,8 +207,32 @@ make clean
 ```
 
 Compiler: VBCC `vc +aos68k -c99 -cpu=68000 -O2 -size`  
-Output: `Bin/Amiga/WHDDownloader`  
+Output: `Bin/Amiga/whdfetch`  
 Build objects: `build/amiga/`
+
+---
+
+## `$VER:` metadata date format
+
+The executable embeds an Amiga-compatible `$VER:` string so the `version` command can
+read program version metadata directly from the binary.
+
+- Version source: `PROGRAM_NAME_LITERAL` + `VERSION_STRING_LITERAL` in `src/main.c`
+- Date source: build-time generated macro `APP_BUILD_DATE_DMY` (`DD.MM.YYYY`)
+- Generated header: `build/amiga/generated/build_version.h`
+- Build step: `Makefile` regenerates `build_version.h` each build using PowerShell
+
+Effective embedded format:
+
+```text
+$VER: Retroplay WHD Downloader 0.9b (18.03.2026)
+```
+
+Notes:
+
+- This avoids relying on `__DATE__` (which uses `Mon DD YYYY` format).
+- The scanner helper in `main.c` avoids storing a standalone `"$VER:"` literal so the
+      app tag remains discoverable as the primary version string.
 
 ---
 
@@ -227,7 +252,7 @@ Build objects: `build/amiga/`
 
 | File | Topic |
 |------|-------|
-| `docs/WHDDownloader.ini.sample` | Fully annotated INI sample |
+| `docs/whdfetch.ini.sample` | Fully annotated INI sample |
 | `docs/ini_runtime_test_matrix.md` | Per-key INI test checklist |
 | `docs/extraction_plan.md` | Extraction system design |
 | `docs/archive_index_plan.md` | Archive index cache design |

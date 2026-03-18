@@ -82,9 +82,9 @@ extern int skip_NonEnglish;
 
 extern long start_time;
 
-extern const char *VERSION_STRING;
-extern const char *PROGRAM_NAME;
-extern const char *version;
+extern const char VERSION_STRING[];
+extern const char PROGRAM_NAME[];
+extern const char version[];
 
 /* Text Formatting */
 #define textBlack "\x1B[31m"

@@ -1,8 +1,8 @@
-# WHDDownloader - GitHub Copilot Instructions
+# Retroplay WHD Downloader (whdfetch) - GitHub Copilot Instructions
 
 ## Project Overview
 
-**WHDDownloader** is a VBCC/AmigaOS CLI tool that automates downloading and extracting WHDLoad game archives from the Retroplay FTP site. It:
+**Retroplay WHD Downloader** (`whdfetch`) is a VBCC/AmigaOS CLI tool that automates downloading and extracting WHDLoad game archives from the Retroplay FTP site. It:
 
 - Downloads `index.html`, parses HTML links, and fetches matching `.zip` packs from the Retroplay site
 - Extracts XML DAT files from ZIPs, parses `<rom name="...">` entries, applies skip filters (AGA/CD/NTSC/language)
@@ -24,7 +24,7 @@ WHDDownloader/
 ├── src/
 │   ├── main.c                      <- entry point, CLI parsing, 5-pack download orchestration
 │   ├── main.h                      <- whdload_pack_def + download_option structs
-│   ├── ini_parser.c/h              <- WHDDownloader.ini loader (8+ config keys)
+│   ├── ini_parser.c/h              <- whdfetch.ini loader (legacy fallback supported)
 │   ├── gamefile_parser.c/h         <- archive filename → game_metadata parser
 │   ├── utilities.c/h               <- string/file helpers, Workbench version detection
 │   ├── cli_utilities.c/h           <- console cursor/size detection
@@ -50,7 +50,7 @@ WHDDownloader/
 │       ├── amiga_headers.h         <- all Amiga system includes (guarded)
 │       └── platform_types.h        <- platform_bptr type abstraction
 ├── build/amiga/                    <- compiler output (gitignored)
-├── Bin/Amiga/WHDDownloader         <- final binary (gitignored)
+├── Bin/Amiga/whdfetch              <- final binary (gitignored)
 ├── Bin/Amiga/GameFiles/            <- downloaded .lha archives and extracted games
 ├── Bin/Amiga/temp/                 <- index.html, ZIP files, DAT/xml work area
 ├── Bin/Amiga/icons/                <- letter icon templates (A.info … Z.info)
@@ -81,7 +81,7 @@ make AUTO=0
 make clean
 ```
 
-Build output: `Bin/Amiga/WHDDownloader`  
+Build output: `Bin/Amiga/whdfetch`  
 Log output at runtime: `PROGDIR:logs/`
 
 **Note:** VBCC on Windows strips quotes from `-D` string values on the command line, so `AMIGA_APP_NAME` cannot be set via a Makefile `-D` flag. Edit `src/platform/platform.h` directly.
@@ -147,9 +147,9 @@ QUIET                Silent unzip output
 
 ---
 
-## INI File Format (`PROGDIR:WHDDownloader.ini`)
+## INI File Format (`PROGDIR:whdfetch.ini`)
 
-INI is optional; all keys override compiled defaults. See `docs/WHDDownloader.ini.sample`.
+INI is optional; all keys override compiled defaults. Legacy `PROGDIR:WHDDownloader.ini` is also supported as fallback. See `docs/whdfetch.ini.sample`.
 
 ```ini
 [global]

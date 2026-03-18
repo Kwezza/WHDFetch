@@ -23,8 +23,8 @@ AUTO     ?= 1
 # Project identity - change these for each new project
 # ---------------------------------------------------------------------------
 
-APP_NAME = WHDDownloader
-PROJECT  = WHDDownloader
+APP_NAME = Retroplay WHD Downloader
+PROJECT  = whdfetch
 
 # ---------------------------------------------------------------------------
 # Directories
@@ -35,6 +35,8 @@ BUILD_DIR = build
 OUT_DIR   = $(BUILD_DIR)/amiga
 BIN_DIR   = Bin/Amiga
 BIN       = $(BIN_DIR)/$(PROJECT)
+GENERATED_DIR = $(OUT_DIR)/generated
+GENERATED_VERSION_H = $(GENERATED_DIR)/build_version.h
 
 # ---------------------------------------------------------------------------
 # Feature flags
@@ -67,6 +69,7 @@ NDK_INC      = C:/Amiga/AmigaIncludes
 CFLAGS = +aos68k -c99 -cpu=68000 -O2 -size \
 		 -I$(VBCC)/targets/m68k-amigaos/include \
          -I$(SRC_DIR) \
+		 -I$(GENERATED_DIR) \
          -I$(NDK_INC) \
          -I$(ROADSHOW_INC) \
          -DPLATFORM_AMIGA=1 \
@@ -133,18 +136,26 @@ OBJS = \
 # Targets
 # ---------------------------------------------------------------------------
 
-.PHONY: all clean help directories
+.PHONY: all clean help directories FORCE
 
 all: directories $(BIN)
 
 directories:
 	@if not exist "$(OUT_DIR)"            mkdir "$(OUT_DIR)"
+	@if not exist "$(GENERATED_DIR)"      mkdir "$(GENERATED_DIR)"
 	@if not exist "$(OUT_DIR)\log"        mkdir "$(OUT_DIR)\log"
 	@if not exist "$(OUT_DIR)\platform"  mkdir "$(OUT_DIR)\platform"
 	@if not exist "$(OUT_DIR)\extract"   mkdir "$(OUT_DIR)\extract"
 	@if not exist "$(OUT_DIR)\report"    mkdir "$(OUT_DIR)\report"
 	@if not exist "$(OUT_DIR)\download"  mkdir "$(OUT_DIR)\download"
 	@if not exist "$(BIN_DIR)"            mkdir "$(BIN_DIR)"
+
+$(GENERATED_VERSION_H): FORCE | directories
+	@echo Generating: $@
+	@echo #ifndef BUILD_VERSION_H > $(GENERATED_VERSION_H)
+	@echo #define BUILD_VERSION_H >> $(GENERATED_VERSION_H)
+	@for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format dd.MM.yyyy"') do @echo #define APP_BUILD_DATE_DMY "%%i" >> $(GENERATED_VERSION_H)
+	@echo #endif >> $(GENERATED_VERSION_H)
 
 # Link
 $(BIN): $(OBJS)
@@ -153,7 +164,7 @@ $(BIN): $(OBJS)
 	@echo Build complete: $(BIN)
 
 # Compile rules
-$(OUT_DIR)/main.o: $(SRC_DIR)/main.c
+$(OUT_DIR)/main.o: $(SRC_DIR)/main.c $(GENERATED_VERSION_H)
 	@echo Compiling: $<
 	$(CC) $(CFLAGS) -c $< -o $@
 
@@ -225,6 +236,8 @@ clean:
 	@echo Cleaning...
 	@if exist "$(OUT_DIR)" rmdir /S /Q "$(OUT_DIR)"
 	@echo Done.
+
+FORCE:
 
 help:
 	@echo amiga-base Build System

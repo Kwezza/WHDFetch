@@ -77,6 +77,7 @@ Future plans:
 #include "extract/extract.h"
 #include "platform/platform.h"
 #include "log/log.h"
+#include "build_version.h"
 
 #if defined(__AMIGA__)
 /* VBCC stack override: helps avoid late-exit crashes from stack exhaustion. */
@@ -556,8 +557,8 @@ int skip_AGA = 0, skip_CD = 0, skip_NTSC = 0, skip_NonEnglish = 0;
 
 long start_time;
 
-#define VERSION_STRING "1.0"
-#define PROGRAM_NAME "Retroplay WHDLoad Downloader"
+#define PROGRAM_NAME_LITERAL "Retroplay WHD Downloader"
+#define VERSION_STRING_LITERAL "0.9b"
 #define TEMPLATE "HELP/S,DOWNLOADGAMES/S,DOWNLOADBETAGAMES/S,"                       \
                  "DOWNLOADDEMOS/S,DOWNLOADBETADEMOS/S,DOWNLOADMAGS/S,DOWNLOADALL/S," \
                  "NOSKIPREPORT/S,SKIPAGA/S,SKIPCD/S,"                                \
@@ -575,7 +576,9 @@ long start_time;
 #define textUnderline "\x1B[4m"
 #define textWhite "\x1B[32m"
 
-const char *version = "$VER: " PROGRAM_NAME " V." VERSION_STRING " (" __DATE__ " " __TIME__ ")";
+const char PROGRAM_NAME[] = PROGRAM_NAME_LITERAL;
+const char VERSION_STRING[] = VERSION_STRING_LITERAL;
+const char version[] = "$VER: " PROGRAM_NAME_LITERAL " " VERSION_STRING_LITERAL " (" APP_BUILD_DATE_DMY ")";
 struct Library *RP_Socket_Base;
 
 /* const char *DIR_GAME_DOWNLOADS = "GameFiles/"; */
@@ -586,7 +589,7 @@ const char *DIR_TEMP = "temp";
 const char *DIR_ZIP_FILES = "temp/Zip files";
 
 /**
- * @brief Main entry point for the Retroplay WHDLoad Downloader application
+ * @brief Main entry point for the Retroplay WHD Downloader application
  *
  * Processes command line arguments, initializes directories, downloads and 
  * processes DAT files, and downloads WHDLoad archives based on user options.
@@ -898,7 +901,7 @@ int main(int argc, char *argv[])
                 ADTAG_Verbose, FALSE,             
             ADTAG_Timeout, download_options.timeout_seconds,               
                 ADTAG_BufferSize, 16384,         
-                ADTAG_UserAgent, "AmigaRetroplayDownloader/1.0", 
+                ADTAG_UserAgent, "whdfetch/1.0", 
                 ADTAG_MaxRetries, 2,             
                 TAG_DONE))
         {
@@ -1044,7 +1047,7 @@ int main(int argc, char *argv[])
     
     /* Show elapsed time and version */
     printf("\nElapsed time: %ld:%02ld:%02ld\n", hours, minutes, seconds);
-    printf(textReset textBold " PROGRAM_NAME " textReset ", version " VERSION_STRING "\n\n");
+    printf(textReset textBold " %s " textReset ", version %s\n\n", PROGRAM_NAME, VERSION_STRING);
 
     log_info(LOG_GENERAL, "main: normal completion, beginning shutdown\n");
     do_shutdown();
@@ -1076,7 +1079,7 @@ BOOL startup_text_and_needed_progs_are_installed(int number_of_args)
 
         add_line(&tb, "");
 
-        addf_line(&tb, "<b>" PROGRAM_NAME "</b> " VERSION_STRING " (" __DATE__ " " __TIME__ ")<ut>");
+        addf_line(&tb, "<b>%s</b> %s (%s %s)<ut>", PROGRAM_NAME, VERSION_STRING, APP_BUILD_DATE_DMY, __TIME__);
         add_line(&tb, "");
         add_line(&tb, "A tool to download and maintain your WHDLoad library from RetroPlay's online repository. Supports incremental updates.");
 
@@ -1121,7 +1124,7 @@ BOOL startup_text_and_needed_progs_are_installed(int number_of_args)
             add_line(&tb, "");
             add_line(&tb, "<b>Usage and examples<ut>");
             add_line(&tb, "");
-            add_line(&tb, "<b>Usage:</b> WHDDownloader [OPTIONS] [COMMANDS]");
+            add_line(&tb, "<b>Usage:</b> whdfetch [OPTIONS] [COMMANDS]");
             add_line(&tb, "");
             add_line(&tb, "<b>Commands (choose one or more):</b>");
             add_line(&tb, "  DOWNLOADGAMES/S<ex23>Download games");
@@ -1150,17 +1153,17 @@ BOOL startup_text_and_needed_progs_are_installed(int number_of_args)
 
             add_line(&tb, "");
             add_line(&tb, "<b>Examples:</b>");
-            add_line(&tb, "  'WHDDownloader DOWNLOADGAMES'");
+            add_line(&tb, "  'whdfetch DOWNLOADGAMES'");
             add_line(&tb, "<ex06>Download all games");
-            add_line(&tb, "  WHDDownloader DOWNLOADALL SKIPAGA");
+            add_line(&tb, "  whdfetch DOWNLOADALL SKIPAGA");
             add_line(&tb, "<ex06>Download all packs, skipping AGA packages");
-            add_line(&tb, "  WHDDownloader DOWNLOADGAMES EXTRACTTO=Games: KEEPARCHIVES");
+            add_line(&tb, "  whdfetch DOWNLOADGAMES EXTRACTTO=Games: KEEPARCHIVES");
             add_line(&tb, "<ex06>Download games and extract to Games: while keeping archives");
-            add_line(&tb, "  WHDDownloader DOWNLOADBETAGAMES EXTRACTONLY EXTRACTTO=Games: KEEPARCHIVES");
+            add_line(&tb, "  whdfetch DOWNLOADBETAGAMES EXTRACTONLY EXTRACTTO=Games: KEEPARCHIVES");
             add_line(&tb, "<ex06>Extract existing beta-game archives without redownloading");
-            add_line(&tb, "  WHDDownloader DOWNLOADGAMES FORCEEXTRACT");
+            add_line(&tb, "  whdfetch DOWNLOADGAMES FORCEEXTRACT");
             add_line(&tb, "<ex06>Force extraction even when a matching ArchiveName.txt already exists");
-            add_line(&tb, "  WHDDownloader DOWNLOADGAMES FORCEDOWNLOAD");
+            add_line(&tb, "  whdfetch DOWNLOADGAMES FORCEDOWNLOAD");
             add_line(&tb, "<ex06>Bypass pre-download marker checks and always download archives");
             add_line(&tb, "");
             add_line(&tb, "<b>Notes</b><ut>");
@@ -3143,8 +3146,7 @@ char *get_executable_version(const char *file_path)
     int version_len;          /* Length of full version string */
     int clean_len;            /* Length of version string without prefix */
 
-    /* Tag to search for in binary */
-    const char *version_tag = "$VER:";
+    /* Tag length for "$VER:" marker scanning */
     const int tag_len = 5;
 
     /* Check if file exists */
@@ -3176,7 +3178,11 @@ char *get_executable_version(const char *file_path)
         /* Search each position in the buffer for tag match */
         for (i = 0; i <= bytes_read - tag_len; ++i)
         {
-            if (memcmp(&buffer[i], version_tag, tag_len) == 0)
+            if (buffer[i] == '$' &&
+                buffer[i + 1] == 'V' &&
+                buffer[i + 2] == 'E' &&
+                buffer[i + 3] == 'R' &&
+                buffer[i + 4] == ':')
             {
                 /* Found the version tag - mark start position */
                 start = i;

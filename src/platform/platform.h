@@ -22,7 +22,7 @@
  * VBCC on Windows cannot receive string literals via -D flags, so
  * change this define directly when starting a new project.          */
 #ifndef AMIGA_APP_NAME
-    #define AMIGA_APP_NAME "AmigaApp"
+    #define AMIGA_APP_NAME "Retroplay WHD Downloader"
 #endif
 
 /*---------------------------------------------------------------------------*/

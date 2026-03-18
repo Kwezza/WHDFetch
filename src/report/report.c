@@ -286,7 +286,7 @@ void report_write(void)
         }
     }
 
-    fprintf(report_file, "WHDDownloader Session Report\n");
+    fprintf(report_file, "Retroplay WHD Downloader Session Report\n");
     fprintf(report_file, "============================\n");
     fprintf(report_file, "Date: %04ld-%02ld-%02ld %02ld:%02ld:%02ld\n\n",
             (long)(tm_info->tm_year + 1900),

@@ -1,4 +1,4 @@
-# WHDDownloader
+# Retroplay WHD Downloader
 
 AmigaOS CLI tool that automates downloading, extracting, and organising
 [WHDLoad](http://www.whdload.de/) game, demo, and magazine packs from the
@@ -25,12 +25,12 @@ optionally replacing drawer icons.
 
 ## Quick Start
 
-1. Copy `WHDDownloader` and `WHDDownloader.ini` to a directory on your Amiga
-2. Edit `WHDDownloader.ini` (or use CLI flags — see below)
+1. Copy `whdfetch` and `whdfetch.ini` to a directory on your Amiga
+2. Edit `whdfetch.ini` (or use CLI flags — see below)
 3. Open a Shell in that directory and run:
 
 ```
-WHDDownloader GAME
+whdfetch GAME
 ```
 
 Games will be downloaded to `GameFiles/Games/` organised into letter sub-folders.
@@ -87,12 +87,13 @@ Games will be downloaded to `GameFiles/Games/` organised into letter sub-folders
 
 ## INI Configuration
 
-`PROGDIR:WHDDownloader.ini` is optional. When present it overrides built-in defaults.
+`PROGDIR:whdfetch.ini` is optional. When present it overrides built-in defaults.
+If only legacy `PROGDIR:WHDDownloader.ini` exists, it is still supported as a fallback.
 CLI arguments always take precedence over INI values.
 
 **Precedence:** built-in defaults → INI → CLI arguments
 
-A fully annotated sample is at `docs/WHDDownloader.ini.sample`.  
+A fully annotated sample is at `docs/whdfetch.ini.sample`.  
 A per-key test checklist is at `docs/ini_runtime_test_matrix.md`.
 
 ### `[global]`
@@ -137,7 +138,7 @@ Boolean values accept `true`/`false`, `yes`/`no`, `1`/`0`.
 
 ## How skip detection works
 
-Before downloading a title, WHDDownloader checks whether it has already been extracted:
+Before downloading a title, whdfetch checks whether it has already been extracted:
 
 1. It looks up the archive filename in the in-memory `.archive_index` cache  
    (loaded from `GameFiles/<pack>/<letter>/.archive_index` at startup)
@@ -159,8 +160,8 @@ Use `FORCEDOWNLOAD` or `NODOWNLOADSKIP` to bypass the download skip check.
 
 ```
 PROGDIR:
-├── WHDDownloader
-├── WHDDownloader.ini
+├── whdfetch
+├── whdfetch.ini
 ├── GameFiles/
 │   ├── Games/
 │   │   ├── A/
@@ -212,7 +213,13 @@ make clean
 
 **Requirements:** VBCC cross-compiler + NDK 3.2 + Roadshow SDK on Windows host.
 
-Output binary: `Bin/Amiga/WHDDownloader`
+**Build note (cross-platform):** the executable `$VER:` metadata date is generated at
+build time in `DD.MM.YYYY` format via a PowerShell command in `Makefile`
+(`build/amiga/generated/build_version.h`). This works out-of-the-box on Windows.
+If building on Linux/macOS, adjust that Makefile date-generation step to an equivalent
+shell command on your platform.
+
+Output binary: `Bin/Amiga/whdfetch`
 
 ---
 
@@ -223,7 +230,7 @@ Output binary: `Bin/Amiga/WHDDownloader`
 | `PROJECT_OVERVIEW.md` | Full architecture and data-flow overview |
 | `AGENTS.md` | AI agent operational guide (module map, task patterns, pitfalls) |
 | `.github/copilot-instructions.md` | Coding standards, API reference, build rules |
-| `docs/WHDDownloader.ini.sample` | Fully annotated INI sample |
+| `docs/whdfetch.ini.sample` | Fully annotated INI sample |
 | `docs/ini_runtime_test_matrix.md` | Per-key INI test checklist |
 | `docs/extraction_plan.md` | Extraction system design |
 | `docs/archive_index_plan.md` | Archive index cache design |

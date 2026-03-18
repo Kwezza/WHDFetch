@@ -7,7 +7,8 @@
 #include "platform/platform.h"
 #include "utilities.h"
 
-#define INI_FILE_PATH "PROGDIR:WHDDownloader.ini"
+#define INI_FILE_PATH_PRIMARY "PROGDIR:whdfetch.ini"
+#define INI_FILE_PATH_LEGACY "PROGDIR:WHDDownloader.ini"
 #define INI_MAX_LINE 512
 #define INI_MAX_ALLOCATED_STRINGS 64
 
@@ -401,6 +402,7 @@ static void apply_pack_key_value(whdload_pack_def pack_defs[], int pack_index, c
 BOOL ini_parser_load_overrides(whdload_pack_def pack_defs[], download_option *download_opts)
 {
     FILE *ini_file;
+    const char *loaded_ini_path = NULL;
     char line[INI_MAX_LINE];
     char current_section[64] = "";
     IniSectionType current_type = INI_SECTION_NONE;
@@ -412,14 +414,30 @@ BOOL ini_parser_load_overrides(whdload_pack_def pack_defs[], download_option *do
         return FALSE;
     }
 
-    ini_file = fopen(INI_FILE_PATH, "r");
+    ini_file = fopen(INI_FILE_PATH_PRIMARY, "r");
+    if (ini_file != NULL)
+    {
+        loaded_ini_path = INI_FILE_PATH_PRIMARY;
+    }
+    else
+    {
+        ini_file = fopen(INI_FILE_PATH_LEGACY, "r");
+        if (ini_file != NULL)
+        {
+            loaded_ini_path = INI_FILE_PATH_LEGACY;
+            log_info(LOG_GENERAL,
+                     "ini: primary config missing, using legacy fallback %s\n",
+                     INI_FILE_PATH_LEGACY);
+        }
+    }
+
     if (ini_file == NULL)
     {
         /* Optional file: silently keep defaults when missing. */
         return FALSE;
     }
 
-    log_info(LOG_GENERAL, "ini: loading %s\n", INI_FILE_PATH);
+    log_info(LOG_GENERAL, "ini: loading %s\n", loaded_ini_path);
 
     while (fgets(line, sizeof(line), ini_file) != NULL)
     {

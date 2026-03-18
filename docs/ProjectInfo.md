@@ -1,4 +1,4 @@
-# WHDDownloader Session Instructions
+# whdfetch Session Instructions
 
 This document summarizes the features implemented during this chat session.
 
@@ -197,7 +197,7 @@ Workbench drawer icon is written automatically so every folder appears correctly
 
 ### Custom icon lookup
 
-If the folder `PROGDIR:Icons/` exists, WHDDownloader attempts to match the folder's leaf name
+If the folder `PROGDIR:Icons/` exists, whdfetch attempts to match the folder's leaf name
 against a `.info` file inside it before falling back to the system default drawer icon.
 
 Examples:
@@ -216,7 +216,7 @@ An existing icon is never overwritten (the `.info` file is checked before any ic
 
 WHDLoad archives typically ship their own MagicWB-style `.info` sidecar next to the game folder
 (e.g. `Alien3.info` beside `Alien3/`). Placing a file named exactly `WHD folder.info` inside
-`PROGDIR:Icons/` tells WHDDownloader to replace every such icon after extraction:
+`PROGDIR:Icons/` tells whdfetch to replace every such icon after extraction:
 
 1. After LHA extraction completes successfully, the resolved game folder name is known
    (e.g. `Alien3`).
@@ -233,7 +233,7 @@ WHDLoad archives typically ship their own MagicWB-style `.info` sidecar next to 
 ### Unsnapshot copied custom icons
 
 If copied icons contain saved Workbench snapshot coordinates, Workbench can draw many icons at
-the same position. WHDDownloader now clears saved icon positions after each successful copy from
+the same position. whdfetch now clears saved icon positions after each successful copy from
 `PROGDIR:Icons/` by calling `strip_icon_position()` on the destination icon.
 
 Scope:
@@ -253,7 +253,7 @@ Control:
 Custom icons (both drawer icons and the WHD folder template) can be disabled in two ways:
 
 - Pass `NOICONS` on the CLI — forces `use_custom_icons = FALSE` for that run.
-- Set `use_custom_icons=false` in `WHDDownloader.ini` — persists across all runs.
+- Set `use_custom_icons=false` in `whdfetch.ini` — persists across all runs.
 
 When disabled, the system default drawer icon is always used for structural folders, and
 `WHD folder.info` replacement is never attempted.
@@ -367,31 +367,31 @@ If validation fails, startup exits with an error.
 Default behavior with extraction and marker-based skip systems:
 
 ```text
-WHDDownloader DOWNLOADBETAGAMES EXTRACTTO=Games: KEEPARCHIVES
+whdfetch DOWNLOADBETAGAMES EXTRACTTO=Games: KEEPARCHIVES
 ```
 
 Force extraction even if marker matches:
 
 ```text
-WHDDownloader DOWNLOADBETAGAMES EXTRACTTO=Games: KEEPARCHIVES FORCEEXTRACT
+whdfetch DOWNLOADBETAGAMES EXTRACTTO=Games: KEEPARCHIVES FORCEEXTRACT
 ```
 
 Force download even if already extracted marker matches:
 
 ```text
-WHDDownloader DOWNLOADBETAGAMES EXTRACTTO=Games: KEEPARCHIVES FORCEDOWNLOAD
+whdfetch DOWNLOADBETAGAMES EXTRACTTO=Games: KEEPARCHIVES FORCEDOWNLOAD
 ```
 
 Disable only pre-download marker skip:
 
 ```text
-WHDDownloader DOWNLOADBETAGAMES EXTRACTTO=Games: KEEPARCHIVES NODOWNLOADSKIP
+whdfetch DOWNLOADBETAGAMES EXTRACTTO=Games: KEEPARCHIVES NODOWNLOADSKIP
 ```
 
 Extract existing local archives only:
 
 ```text
-WHDDownloader DOWNLOADBETAGAMES EXTRACTONLY EXTRACTTO=Games: KEEPARCHIVES
+whdfetch DOWNLOADBETAGAMES EXTRACTONLY EXTRACTTO=Games: KEEPARCHIVES
 ```
 
 ## Notes
@@ -404,7 +404,7 @@ WHDDownloader DOWNLOADBETAGAMES EXTRACTONLY EXTRACTTO=Games: KEEPARCHIVES
 
 ### No pre-download "what's new" preview
 
-WHDDownloader currently has no way to show the user what new or updated archives are
+whdfetch currently has no way to show the user what new or updated archives are
 available on the server *before* downloading and applying them. The session report
 (`PROGDIR:updates/updates_*.txt`) classifies each downloaded archive as NEW or UPDATED,
 but this information is only available *after* the download run completes.
