@@ -10,6 +10,10 @@ void report_add(const char *archive_name,
 void report_add_local_cache_reuse(const char *archive_name,
                                   const char *pack_name);
 
+void report_add_extraction_skip(const char *archive_name,
+                                const char *pack_name,
+                                const char *reason);
+
 void report_write(void);
 void report_cleanup(void);
 

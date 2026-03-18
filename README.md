@@ -17,7 +17,8 @@ optionally replacing drawer icons.
 |-------------|-------|
 | AmigaOS 3.0+ | 3.1+ recommended |
 | Roadshow TCP/IP stack | `bsdsocket.library v4+` required for HTTP |
-| `c:lha` | Archive extraction |
+| `c:lha` | Required for `.lha` extraction |
+| `c:unlzx` | Optional for `.lzx` extraction (`.lzx` archives are skipped if missing) |
 | Fast RAM | Strongly recommended — tool uses `MEMF_ANY` allocations |
 
 ---
@@ -49,7 +50,7 @@ Games will be downloaded to `GameFiles/Games/` organised into letter sub-folders
 | `MAGAZINE` | Download Magazines pack |
 | `DOWNLOADALL` | Download all five packs |
 | `PURGETEMP` | Delete `PROGDIR:temp` recursively (asks for confirmation first) |
-| `PURGEARCHIVES` | Purge downloaded `.lha` files under `GameFiles/` (asks for confirmation; keeps extracted folders) |
+| `PURGEARCHIVES` | Purge downloaded archives (`.lha`/`.lzx`) under `GameFiles/` (asks for confirmation; keeps extracted folders) |
 | `HELP` | Show help and exit |
 
 ### Extraction control
@@ -59,8 +60,8 @@ Games will be downloaded to `GameFiles/Games/` organised into letter sub-folders
 | `NOEXTRACT` | Download archives but do not extract them |
 | `EXTRACTONLY` | Extract already-downloaded archives without downloading anything new |
 | `EXTRACTTO=<path>` | Extract to an alternate path (preserves pack/letter layout) |
-| `KEEPARCHIVES` | Keep `.lha` files after successful extraction |
-| `DELETEARCHIVES` | Delete `.lha` files after successful extraction |
+| `KEEPARCHIVES` | Keep archive files (`.lha`/`.lzx`) after successful extraction |
+| `DELETEARCHIVES` | Delete archive files (`.lha`/`.lzx`) after successful extraction |
 | `FORCEEXTRACT` | Re-extract even when `ArchiveName.txt` already matches |
 | `FORCEDOWNLOAD` | Re-download even when the title is already extracted |
 | `NODOWNLOADSKIP` | Download even if an extraction marker exists |

@@ -217,6 +217,34 @@ int strncasecmp_custom(const char *s1, const char *s2, size_t n)
     return 0;
 }
 
+archive_type detect_archive_type_from_filename(const char *filename)
+{
+    const char *dot;
+
+    if (filename == NULL)
+    {
+        return ARCHIVE_TYPE_UNKNOWN;
+    }
+
+    dot = strrchr(filename, '.');
+    if (dot == NULL)
+    {
+        return ARCHIVE_TYPE_UNKNOWN;
+    }
+
+    if (stricmp_custom(dot, ".lha") == 0)
+    {
+        return ARCHIVE_TYPE_LHA;
+    }
+
+    if (stricmp_custom(dot, ".lzx") == 0)
+    {
+        return ARCHIVE_TYPE_LZX;
+    }
+
+    return ARCHIVE_TYPE_UNKNOWN;
+}
+
 BOOL does_file_or_folder_exist(const char *filename, int appendWorkingDirectory)
 {
     BPTR lock;

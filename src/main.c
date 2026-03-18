@@ -135,6 +135,175 @@ static BOOL can_write_to_extract_path(const char *extract_path)
     return TRUE;
 }
 
+static BOOL is_nonfatal_extract_skip(LONG extract_code)
+{
+    return (extract_code == EXTRACT_RESULT_SKIPPED_TOOL_MISSING ||
+            extract_code == EXTRACT_RESULT_SKIPPED_UNSUPPORTED_ARCHIVE) ? TRUE : FALSE;
+}
+
+static BOOL confirm_purge_archives(void)
+{
+    char response[16] = {0};
+
+    fprintf(stderr, "\nPURGEARCHIVES will permanently delete downloaded .lha/.lzx archives under GameFiles/.\n");
+    fprintf(stderr, "Extracted game folders will be preserved.\n");
+    fprintf(stderr, "Type Y to continue: ");
+    fflush(stderr);
+
+    if (fgets(response, sizeof(response), stdin) == NULL)
+    {
+        fprintf(stderr, "\nPurge cancelled.\n");
+        return FALSE;
+    }
+
+    if (toupper((unsigned char)response[0]) != 'Y')
+    {
+        fprintf(stderr, "\nPurge cancelled.\n");
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+static BOOL purge_archive_files_recursive(const char *directory, ULONG *deleted_count)
+{
+    BPTR directory_lock;
+    struct FileInfoBlock *fib;
+    char entry_path[512] = {0};
+    BOOL success = TRUE;
+
+    if (directory == NULL)
+    {
+        return FALSE;
+    }
+
+    directory_lock = Lock(directory, ACCESS_READ);
+    if (directory_lock == 0)
+    {
+        return TRUE;
+    }
+
+    fib = AllocDosObject(DOS_FIB, NULL);
+    if (fib == NULL)
+    {
+        UnLock(directory_lock);
+        return FALSE;
+    }
+
+    if (!Examine(directory_lock, fib))
+    {
+        FreeDosObject(DOS_FIB, fib);
+        UnLock(directory_lock);
+        return FALSE;
+    }
+
+    while (ExNext(directory_lock, fib))
+    {
+        if (fib->fib_DirEntryType > 0)
+        {
+            if (snprintf(entry_path, sizeof(entry_path), "%s/%s", directory, fib->fib_FileName) >= (int)sizeof(entry_path))
+            {
+                log_warning(LOG_GENERAL,
+                            "purge: skipped directory with path too long under '%s' ('%s')\n",
+                            directory,
+                            fib->fib_FileName);
+                success = FALSE;
+                continue;
+            }
+
+            sanitize_amiga_file_path(entry_path);
+            if (!purge_archive_files_recursive(entry_path, deleted_count))
+            {
+                success = FALSE;
+            }
+        }
+        else if (fib->fib_DirEntryType < 0 && detect_archive_type_from_filename(fib->fib_FileName) != ARCHIVE_TYPE_UNKNOWN)
+        {
+            if (snprintf(entry_path, sizeof(entry_path), "%s/%s", directory, fib->fib_FileName) >= (int)sizeof(entry_path))
+            {
+                log_warning(LOG_GENERAL,
+                            "purge: skipped archive with path too long under '%s' ('%s')\n",
+                            directory,
+                            fib->fib_FileName);
+                success = FALSE;
+                continue;
+            }
+
+            sanitize_amiga_file_path(entry_path);
+            if (DeleteFile(entry_path))
+            {
+                if (deleted_count != NULL)
+                {
+                    *deleted_count = *deleted_count + 1;
+                }
+                log_info(LOG_GENERAL, "purge: deleted archive '%s'\n", entry_path);
+            }
+            else if (IoErr() != ERROR_OBJECT_NOT_FOUND)
+            {
+                log_warning(LOG_GENERAL,
+                            "purge: failed to delete archive '%s' (IoErr=%ld)\n",
+                            entry_path,
+                            (long)IoErr());
+                success = FALSE;
+            }
+        }
+    }
+
+    if (IoErr() != ERROR_NO_MORE_ENTRIES)
+    {
+        log_warning(LOG_GENERAL,
+                    "purge: directory scan ended with IoErr=%ld for '%s'\n",
+                    (long)IoErr(),
+                    directory);
+        success = FALSE;
+    }
+
+    FreeDosObject(DOS_FIB, fib);
+    UnLock(directory_lock);
+    return success;
+}
+
+static BOOL purge_downloaded_archives(void)
+{
+    ULONG deleted_count = 0;
+    const char *archive_root_directory = "GameFiles";
+
+    if (!does_file_or_folder_exist(archive_root_directory, 0))
+    {
+        fprintf(stderr, "GameFiles/ does not exist; nothing to purge.\n");
+        log_info(LOG_GENERAL, "purge: GameFiles directory missing; nothing to delete\n");
+        return TRUE;
+    }
+
+    if (!purge_archive_files_recursive(archive_root_directory, &deleted_count))
+    {
+        fprintf(stderr, "Purge completed with errors. Check the log for details.\n");
+        log_error(LOG_GENERAL, "purge: archive purge completed with errors\n");
+        return FALSE;
+    }
+
+    fprintf(stderr, "Purged archive files under %s/.\n", archive_root_directory);
+    log_info(LOG_GENERAL,
+             "purge: purged archive files under '%s'\n",
+             archive_root_directory);
+    return TRUE;
+}
+
+static const char *extract_skip_reason_from_code(LONG extract_code)
+{
+    if (extract_code == EXTRACT_RESULT_SKIPPED_TOOL_MISSING)
+    {
+        return "c:unlzx missing - install UnLZX2 from Aminet and place unlzx in C:";
+    }
+
+    if (extract_code == EXTRACT_RESULT_SKIPPED_UNSUPPORTED_ARCHIVE)
+    {
+        return "unsupported archive extension";
+    }
+
+    return NULL;
+}
+
 static BOOL validate_extraction_startup_configuration(const download_option *download_options)
 {
     if (download_options == NULL)
@@ -153,6 +322,13 @@ static BOOL validate_extraction_startup_configuration(const download_option *dow
         printf("Extraction is enabled, but c:lha is missing. Install lha or use NOEXTRACT.\n");
         log_error(LOG_GENERAL, "extract: startup validation failed because c:lha is missing\n");
         return FALSE;
+    }
+
+    if (!does_file_or_folder_exist("c:unlzx", 0))
+    {
+        printf("Note: c:unlzx is missing. LZX archives will be skipped during extraction.\n");
+        log_warning(LOG_GENERAL,
+                    "extract: startup validation note - c:unlzx missing, LZX archives will be skipped\n");
     }
 
     if (download_options->extract_path != NULL && download_options->extract_path[0] != '\0')
@@ -209,7 +385,7 @@ static void log_effective_configuration(const whdload_pack_def *pack_defs,
     }
 
     log_info(LOG_GENERAL,
-             "config[%s]: options no_skip=%ld quiet=%ld extract=%ld extract_only=%ld skip_existing=%ld force_extract=%ld skip_download=%ld force_download=%ld extract_path='%s' delete_archives=%ld skip_aga=%ld skip_cd=%ld skip_ntsc=%ld skip_non_english=%ld use_custom_icons=%ld unsnapshot_icons=%ld\n",
+             "config[%s]: options no_skip=%ld quiet=%ld extract=%ld extract_only=%ld skip_existing=%ld force_extract=%ld skip_download=%ld force_download=%ld extract_path='%s' delete_archives=%ld purge_archives=%ld skip_aga=%ld skip_cd=%ld skip_ntsc=%ld skip_non_english=%ld use_custom_icons=%ld unsnapshot_icons=%ld\n",
              stage,
              (long)download_options->no_skip_messages,
              (long)download_options->quiet_output,
@@ -221,6 +397,7 @@ static void log_effective_configuration(const whdload_pack_def *pack_defs,
              (long)download_options->force_download,
              (download_options->extract_path != NULL) ? download_options->extract_path : "",
              (long)download_options->delete_archives_after_extract,
+             (long)download_options->purge_archives,
              (long)skip_AGA,
              (long)skip_CD,
              (long)skip_NTSC,
@@ -385,7 +562,7 @@ long start_time;
                  "DOWNLOADDEMOS/S,DOWNLOADBETADEMOS/S,DOWNLOADMAGS/S,DOWNLOADALL/S," \
                  "NOSKIPREPORT/S,SKIPAGA/S,SKIPCD/S,"                                \
                  "SKIPNTSC/S,SKIPNONENGLISH/S,QUIET/S,NOEXTRACT/S,"                  \
-                 "EXTRACTTO/K,KEEPARCHIVES/S,DELETEARCHIVES/S,EXTRACTONLY/S,FORCEEXTRACT/S," \
+                 "EXTRACTTO/K,KEEPARCHIVES/S,DELETEARCHIVES/S,PURGEARCHIVES/S,EXTRACTONLY/S,FORCEEXTRACT/S," \
                  "NODOWNLOADSKIP/S,FORCEDOWNLOAD/S,NOICONS/S"
 
 #define textBlack "\x1B[31m"
@@ -455,6 +632,27 @@ int main(int argc, char *argv[])
     }
 
     log_effective_configuration(whdload_pack_defs, &download_options, "after-ini");
+
+    for (i = 0; i < argc; i++)
+    {
+        if (strncasecmp_custom(argv[i], "PURGEARCHIVES", strlen(argv[i])) == 0)
+        {
+            if (!confirm_purge_archives())
+            {
+                do_shutdown();
+                return 0;
+            }
+
+            if (!purge_downloaded_archives())
+            {
+                do_shutdown();
+                return RETURN_FAIL;
+            }
+
+            do_shutdown();
+            return 0;
+        }
+    }
 
     /* Show startup text and verify required programs */
     if (startup_text_and_needed_progs_are_installed(argc))
@@ -601,6 +799,11 @@ int main(int argc, char *argv[])
         if (strncasecmp_custom(argv[i], "FORCEDOWNLOAD", strlen(argv[i])) == 0)
         {
             download_options.force_download = TRUE;
+        }
+
+        if (strncasecmp_custom(argv[i], "PURGEARCHIVES", strlen(argv[i])) == 0)
+        {
+            download_options.purge_archives = TRUE;
         }
 
         if (strncasecmp_custom(argv[i], "NOICONS", strlen(argv[i])) == 0)
@@ -892,7 +1095,21 @@ BOOL startup_text_and_needed_progs_are_installed(int number_of_args)
         versionInfo = get_executable_version("c:unzip");
         addf_line(&tb, "<b>UnZip:</b><ex08>%s", versionInfo);
         amiga_free(versionInfo);
-        ;
+
+        versionInfo = get_executable_version("c:lha");
+        addf_line(&tb, "<b>LHA:</b><ex08>%s", versionInfo);
+        amiga_free(versionInfo);
+
+        if (does_file_or_folder_exist("c:unlzx", 0))
+        {
+            versionInfo = get_executable_version("c:unlzx");
+            addf_line(&tb, "<b>UnLZX:</b><ex08>%s", versionInfo);
+            amiga_free(versionInfo);
+        }
+        else
+        {
+            add_line(&tb, "<b>UnLZX:</b><ex08>[Not installed - .lzx archives will be skipped]");
+        }
 
         versionInfo = run_dos_command_and_get_first_line("version");
         addf_line(&tb, "<b>Host:</b><ex08>%s", versionInfo);
@@ -913,6 +1130,7 @@ BOOL startup_text_and_needed_progs_are_installed(int number_of_args)
             add_line(&tb, "  DOWNLOADBETADEMOS/S<ex23>Download beta and unofficial demos");
             add_line(&tb, "  DOWNLOADMAGS/S<ex23>Download magazines");
             add_line(&tb, "  DOWNLOADALL/S<ex23>Download all packs");
+            add_line(&tb, "  PURGEARCHIVES/S<ex23>Delete downloaded archives under GameFiles/ recursively");
             add_line(&tb, "");
             add_line(&tb, "<b>Options (optional, choose one or more):</b>");
             add_line(&tb, "  NOSKIPREPORT/S<ex23>Don't report skipped existing archives");
@@ -950,12 +1168,13 @@ BOOL startup_text_and_needed_progs_are_installed(int number_of_args)
             add_line(&tb, "</b>  -<ex04>On WinUAE, entire sets can be downloaded in under an hour.");
             add_line(&tb, "</b>  -<ex04>On real Amiga hardware, speed may vary depending on CPU and network connectivity");
             add_line(&tb, "</b>  -<ex04>Archive extraction can be configured with NOEXTRACT, EXTRACTTO, KEEPARCHIVES, and DELETEARCHIVES.");
+            add_line(&tb, "</b>  -<ex04>PURGEARCHIVES removes downloaded .lha/.lzx files under GameFiles/ after confirmation.");
             add_line(&tb, "</b>  -<ex04>By default, extraction is skipped when ArchiveName.txt line 2 exactly matches the archive filename.");
             add_line(&tb, "</b>  -<ex04>By default, download is also skipped when an extracted ArchiveName.txt match is found.");
             add_line(&tb, "</b>  -<ex04>Use FORCEEXTRACT to bypass the skip check and always re-extract.");
             add_line(&tb, "</b>  -<ex04>Use FORCEDOWNLOAD to bypass pre-download skip and always fetch archives.");
             add_line(&tb, "</b>  -<ex04>Use EXTRACTONLY to process archives that are already present in GameFiles/.");
-            add_line(&tb, "</b>  -<ex04>Deletion of existing files is not yet implemented.");
+            add_line(&tb, "</b>  -<ex04>PURGEARCHIVES keeps extracted folders intact; only archive files are deleted.");
             add_line(&tb, "</b>  -<ex04>For comments and suggestions, please visit the GitHub repository at https://github.com/Kwezza/RetroPlay-WHDLoad-downloader");
 
             add_line(&tb, "");
@@ -991,6 +1210,7 @@ void setup_app_defaults(struct whdload_pack_def WHDLoadPackDefs[], struct downlo
         downloadOptions->force_download = FALSE;
         downloadOptions->extract_path = NULL;
         downloadOptions->delete_archives_after_extract = TRUE;
+        downloadOptions->purge_archives = FALSE;
         downloadOptions->extract_existing_only = 0;
         downloadOptions->use_custom_icons = TRUE;
         downloadOptions->unsnapshot_icons = TRUE;
@@ -1818,6 +2038,7 @@ LONG extract_existing_archives_from_file(const char *filename,
     LONG extractCode = 0;
     LONG extractedCount = 0;
     LONG missingCount = 0;
+    LONG skippedCount = 0;
     LONG failedCount = 0;
 
     filePtr = fopen(filename, "r");
@@ -1869,6 +2090,23 @@ LONG extract_existing_archives_from_file(const char *filename,
         {
             extractedCount++;
         }
+        else if (is_nonfatal_extract_skip(extractCode))
+        {
+            const char *skip_reason = extract_skip_reason_from_code(extractCode);
+
+            skippedCount++;
+            log_info(LOG_GENERAL,
+                     "extract: skipped existing archive '%s' (code=%ld)\n",
+                     archivePath,
+                     (long)extractCode);
+
+            if (skip_reason != NULL)
+            {
+                report_add_extraction_skip(buffer,
+                                           WHDLoadPackDefs->full_text_name_of_pack,
+                                           skip_reason);
+            }
+        }
         else
         {
             failedCount++;
@@ -1882,10 +2120,11 @@ LONG extract_existing_archives_from_file(const char *filename,
     fclose(filePtr);
 
     log_info(LOG_GENERAL,
-             "extract: existing archive pass for '%s' complete (extracted=%ld missing=%ld failed=%ld)\n",
+             "extract: existing archive pass for '%s' complete (extracted=%ld missing=%ld skipped=%ld failed=%ld)\n",
              WHDLoadPackDefs->full_text_name_of_pack,
              (long)extractedCount,
              (long)missingCount,
+             (long)skippedCount,
              (long)failedCount);
 
     return (failedCount > 0) ? 1 : 0;
@@ -1965,6 +2204,8 @@ LONG execute_archive_download_command(const char *downloadWHDFile,
         }
         if (download_options != NULL && download_options->extract_archives == TRUE)
         {
+            const char *skip_reason = NULL;
+
             extractCode = extract_process_downloaded_archive(fileName,
                                                              downloadWHDFile,
                                                              WHDLoadPackDefs->extracted_pack_dir,
@@ -1972,7 +2213,15 @@ LONG execute_archive_download_command(const char *downloadWHDFile,
                                                              WHDLoadPackDefs->full_text_name_of_pack,
                                                              download_options);
 
-            if (extractCode != EXTRACT_RESULT_OK)
+            skip_reason = extract_skip_reason_from_code(extractCode);
+            if (skip_reason != NULL)
+            {
+                report_add_extraction_skip(downloadWHDFile,
+                                           WHDLoadPackDefs->full_text_name_of_pack,
+                                           skip_reason);
+            }
+
+            if (extractCode != EXTRACT_RESULT_OK && !is_nonfatal_extract_skip(extractCode))
             {
                 log_warning(LOG_GENERAL,
                             "extract: existing archive '%s' failed extraction check/recovery (code=%ld), continuing\n",
@@ -2075,6 +2324,8 @@ LONG execute_archive_download_command(const char *downloadWHDFile,
 
     if (download_options != NULL && download_options->extract_archives == TRUE)
     {
+        const char *skip_reason = NULL;
+
         extractCode = extract_process_downloaded_archive(fileName,
                                                          downloadWHDFile,
                                                          WHDLoadPackDefs->extracted_pack_dir,
@@ -2082,7 +2333,15 @@ LONG execute_archive_download_command(const char *downloadWHDFile,
                                                          WHDLoadPackDefs->full_text_name_of_pack,
                                                          download_options);
 
-        if (extractCode != EXTRACT_RESULT_OK)
+        skip_reason = extract_skip_reason_from_code(extractCode);
+        if (skip_reason != NULL)
+        {
+            report_add_extraction_skip(downloadWHDFile,
+                                       WHDLoadPackDefs->full_text_name_of_pack,
+                                       skip_reason);
+        }
+
+        if (extractCode != EXTRACT_RESULT_OK && !is_nonfatal_extract_skip(extractCode))
         {
             log_warning(LOG_GENERAL,
                         "extract: post-download extraction failed for '%s' (code=%ld), continuing\n",
@@ -2675,6 +2934,40 @@ void sanitize_amiga_file_path(char *path)
     amiga_free(sanitized_path);
 }
 
+static BOOL is_existing_directory(const char *path)
+{
+    BPTR existing_lock;
+    struct FileInfoBlock *fib;
+    BOOL is_directory = FALSE;
+
+    if (path == NULL || path[0] == '\0')
+    {
+        return FALSE;
+    }
+
+    existing_lock = Lock(path, ACCESS_READ);
+    if (!existing_lock)
+    {
+        return FALSE;
+    }
+
+    fib = AllocDosObject(DOS_FIB, NULL);
+    if (fib != NULL)
+    {
+        if (Examine(existing_lock, fib))
+        {
+            if (fib->fib_DirEntryType >= 0)
+            {
+                is_directory = TRUE;
+            }
+        }
+        FreeDosObject(DOS_FIB, fib);
+    }
+
+    UnLock(existing_lock);
+    return is_directory;
+}
+
 BOOL create_Directory_and_unlock(const char *dirName)
 {
     char path_copy[512];
@@ -2685,6 +2978,12 @@ BOOL create_Directory_and_unlock(const char *dirName)
     {
         log_error(LOG_GENERAL, "dir: invalid directory name\n");
         return FALSE;
+    }
+
+    if (is_existing_directory(dirName))
+    {
+        log_debug(LOG_GENERAL, "dir: already exists '%s'\n", dirName);
+        return TRUE;
     }
 
     /* Create each path component so nested paths work reliably. */
@@ -2710,6 +3009,14 @@ BOOL create_Directory_and_unlock(const char *dirName)
                 LONG err = IoErr();
                 if (err != ERROR_OBJECT_EXISTS)
                 {
+                    if (is_existing_directory(path_copy))
+                    {
+                        log_debug(LOG_GENERAL, "dir: intermediate already exists '%s'\n", path_copy);
+                        *slash = '/';
+                        slash = strchr(slash + 1, '/');
+                        continue;
+                    }
+
                     log_error(LOG_GENERAL, "dir: failed to create intermediate '%s' (IoErr=%ld)\n", path_copy, (long)err);
                     return FALSE;
                 }
@@ -2735,6 +3042,13 @@ BOOL create_Directory_and_unlock(const char *dirName)
             log_debug(LOG_GENERAL, "dir: already exists '%s'\n", dirName);
             return TRUE;
         }
+
+        if (is_existing_directory(dirName))
+        {
+            log_debug(LOG_GENERAL, "dir: already exists '%s'\n", dirName);
+            return TRUE;
+        }
+
         log_error(LOG_GENERAL, "dir: failed to create '%s' (IoErr=%ld)\n", dirName, (long)err);
         return FALSE;
     }

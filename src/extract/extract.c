@@ -15,6 +15,9 @@
 #define EXTRACT_INDEX_FILE_NAME ".archive_index"
 #define EXTRACT_INDEX_LINE_MAX  768
 
+#define EXTRACT_LHA_TOOL "c:lha"
+#define EXTRACT_UNLZX_TOOL "c:unlzx"
+
 typedef struct archive_index_cache {
     char target_directory[EXTRACT_MAX_PATH];
     char **archive_names;
@@ -31,6 +34,11 @@ static BOOL extract_read_archive_name_from_metadata(const char *target_directory
                                                     const char *game_folder_name,
                                                     char *out_archive_name,
                                                     size_t out_archive_name_size);
+
+static BOOL extract_is_unlzx_available(void)
+{
+    return does_file_or_folder_exist(EXTRACT_UNLZX_TOOL, 0);
+}
 
 static char *index_strdup(const char *text)
 {
@@ -1437,6 +1445,125 @@ static BOOL extract_get_top_level_directory_from_lha(const char *archive_path,
     return FALSE;
 }
 
+static BOOL extract_get_top_level_directory_from_lzx(const char *archive_path,
+                                                     char *out_folder_name,
+                                                     size_t out_folder_name_size)
+{
+    char clean_archive_path[EXTRACT_MAX_PATH] = {0};
+    char list_command[EXTRACT_MAX_PATH * 2] = {0};
+    FILE *listing_file;
+    char line[EXTRACT_MAX_PATH] = {0};
+    char path_prefix[EXTRACT_MAX_PATH] = {0};
+
+    if (archive_path == NULL || out_folder_name == NULL || out_folder_name_size == 0)
+    {
+        return FALSE;
+    }
+
+    strncpy(clean_archive_path, archive_path, sizeof(clean_archive_path) - 1);
+    clean_archive_path[sizeof(clean_archive_path) - 1] = '\0';
+    sanitize_amiga_file_path(clean_archive_path);
+
+    if (snprintf(list_command,
+                 sizeof(list_command),
+                 EXTRACT_UNLZX_TOOL " v \"%s\" >%s",
+                 clean_archive_path,
+                 EXTRACT_LISTING_FILE) >= (int)sizeof(list_command))
+    {
+        return FALSE;
+    }
+
+    log_debug(LOG_GENERAL, "extract: probing unlzx listing using '%s'\n", list_command);
+
+    DeleteFile(EXTRACT_LISTING_FILE);
+    if (SystemTagList(list_command, NULL) != 0)
+    {
+        return FALSE;
+    }
+
+    listing_file = fopen(EXTRACT_LISTING_FILE, "r");
+    if (listing_file == NULL)
+    {
+        return FALSE;
+    }
+
+    while (fgets(line, sizeof(line), listing_file) != NULL)
+    {
+        char *slash;
+        char *token_start;
+        size_t prefix_len;
+
+        if (strstr(line, "UNLZX") != NULL ||
+            strstr(line, "Viewing archive") != NULL ||
+            strstr(line, "Original") != NULL ||
+            strstr(line, "--------") != NULL ||
+            strstr(line, "Operation") != NULL)
+        {
+            continue;
+        }
+
+        remove_CR_LF_from_string(line);
+        trim(line);
+
+        if (line[0] == '\0')
+        {
+            continue;
+        }
+
+        /* Use last slash in the line so we parse the filename token,
+           not the ratio field token like "n/a". */
+        slash = strrchr(line, '/');
+        if (slash != NULL)
+        {
+            token_start = slash;
+            while (token_start > line && !isspace((unsigned char)token_start[-1]))
+            {
+                token_start--;
+            }
+
+            prefix_len = (size_t)(slash - token_start);
+            if (prefix_len > 0 && prefix_len < sizeof(path_prefix))
+            {
+                strncpy(path_prefix, token_start, prefix_len);
+                path_prefix[prefix_len] = '\0';
+                trim(path_prefix);
+
+                if (path_prefix[0] == '\0' || strlen(path_prefix) >= out_folder_name_size)
+                {
+                    continue;
+                }
+
+                strncpy(out_folder_name, path_prefix, out_folder_name_size - 1);
+                out_folder_name[out_folder_name_size - 1] = '\0';
+                remove_CR_LF_from_string(out_folder_name);
+                trim(out_folder_name);
+                sanitize_amiga_file_path(out_folder_name);
+
+                if (out_folder_name[0] == '\0')
+                {
+                    continue;
+                }
+
+                log_debug(LOG_GENERAL,
+                          "extract: unlzx listing resolved top-level folder '%s' from '%s'\n",
+                          out_folder_name,
+                          clean_archive_path);
+
+                fclose(listing_file);
+                DeleteFile(EXTRACT_LISTING_FILE);
+                return TRUE;
+            }
+        }
+    }
+
+    fclose(listing_file);
+    DeleteFile(EXTRACT_LISTING_FILE);
+    log_debug(LOG_GENERAL,
+              "extract: unlzx listing did not yield top-level folder for '%s'; using heuristic fallback\n",
+              clean_archive_path);
+    return FALSE;
+}
+
 static BOOL extract_delete_archive_if_needed(const char *archive_path, const download_option *download_options)
 {
     if (archive_path == NULL || download_options == NULL)
@@ -1598,7 +1725,7 @@ LONG extract_archive_with_lha(const char *archive_path, const char *target_direc
 
     if (snprintf(command,
                  sizeof(command),
-                 "c:lha -T -M -N -m x \"%s\" \"%s/\"",
+                 EXTRACT_LHA_TOOL " -T -M -N -m x \"%s\" \"%s/\"",
                  clean_archive_path,
                  clean_target_directory) >= (int)sizeof(command))
     {
@@ -1619,6 +1746,91 @@ LONG extract_archive_with_lha(const char *archive_path, const char *target_direc
     }
 
     return result;
+}
+
+static LONG extract_archive_with_unlzx(const char *archive_path, const char *target_directory)
+{
+    char clean_archive_path[EXTRACT_MAX_PATH] = {0};
+    char clean_target_directory[EXTRACT_MAX_PATH] = {0};
+    char command[EXTRACT_MAX_PATH * 2] = {0};
+    LONG result;
+
+    if (archive_path == NULL || target_directory == NULL)
+    {
+        return EXTRACT_RESULT_INVALID_INPUT;
+    }
+
+    if (!extract_is_unlzx_available())
+    {
+        log_warning(LOG_GENERAL,
+                    "extract: skipping LZX archive '%s' because %s is missing\n",
+                    archive_path,
+                    EXTRACT_UNLZX_TOOL);
+        printf("Skipping LZX extraction for '%s' because %s is missing.\n", archive_path, EXTRACT_UNLZX_TOOL);
+        return EXTRACT_RESULT_SKIPPED_TOOL_MISSING;
+    }
+
+    strncpy(clean_archive_path, archive_path, sizeof(clean_archive_path) - 1);
+    clean_archive_path[sizeof(clean_archive_path) - 1] = '\0';
+    sanitize_amiga_file_path(clean_archive_path);
+
+    strncpy(clean_target_directory, target_directory, sizeof(clean_target_directory) - 1);
+    clean_target_directory[sizeof(clean_target_directory) - 1] = '\0';
+    sanitize_amiga_file_path(clean_target_directory);
+
+    if (snprintf(command,
+                 sizeof(command),
+                 EXTRACT_UNLZX_TOOL " -m x \"%s\" \"%s/\"",
+                 clean_archive_path,
+                 clean_target_directory) >= (int)sizeof(command))
+    {
+        log_error(LOG_GENERAL, "extract: unlzx extraction command too long\n");
+        return EXTRACT_RESULT_TARGET_PATH_FAILED;
+    }
+
+    log_info(LOG_GENERAL, "extract: executing '%s'\n", command);
+
+    result = SystemTagList(command, NULL);
+    if (result != 0)
+    {
+        log_error(LOG_GENERAL,
+                  "extract: unlzx extraction failed for '%s' -> '%s' (return=%ld)\n",
+                  clean_archive_path,
+                  clean_target_directory,
+                  (long)result);
+    }
+
+    return result;
+}
+
+static LONG extract_archive_with_dispatch(const char *archive_path,
+                                          const char *archive_filename,
+                                          const char *target_directory)
+{
+    archive_type detected_type;
+
+    if (archive_path == NULL || archive_filename == NULL || target_directory == NULL)
+    {
+        return EXTRACT_RESULT_INVALID_INPUT;
+    }
+
+    detected_type = detect_archive_type_from_filename(archive_filename);
+
+    if (detected_type == ARCHIVE_TYPE_LHA)
+    {
+        return extract_archive_with_lha(archive_path, target_directory);
+    }
+
+    if (detected_type == ARCHIVE_TYPE_LZX)
+    {
+        return extract_archive_with_unlzx(archive_path, target_directory);
+    }
+
+    log_warning(LOG_GENERAL,
+                "extract: skipping unsupported archive type for '%s'\n",
+                archive_filename);
+    printf("Skipping unsupported archive type: '%s'.\n", archive_filename);
+    return EXTRACT_RESULT_SKIPPED_UNSUPPORTED_ARCHIVE;
 }
 
 BOOL extract_write_archive_metadata(const char *target_directory,
@@ -1926,6 +2138,7 @@ LONG extract_process_downloaded_archive(const char *archive_path,
     char target_directory[EXTRACT_MAX_PATH] = {0};
     char game_folder_name[EXTRACT_MAX_NAME] = {0};
     char existing_archive_name[EXTRACT_MAX_PATH] = {0};
+    archive_type detected_type;
     LONG extract_result;
 
     if (archive_path == NULL || archive_filename == NULL || pack_dir == NULL || first_letter == NULL ||
@@ -1950,7 +2163,20 @@ LONG extract_process_downloaded_archive(const char *archive_path,
         game_folder_name[0] = '\0';
     }
 
-    if (extract_get_top_level_directory_from_lha(archive_path, game_folder_name, sizeof(game_folder_name)))
+    detected_type = detect_archive_type_from_filename(archive_filename);
+    if (detected_type == ARCHIVE_TYPE_UNKNOWN)
+    {
+        log_warning(LOG_GENERAL,
+                    "extract: unsupported archive extension for '%s', skipping\n",
+                    archive_filename);
+        printf("Skipping unsupported archive extension for '%s'.\n", archive_filename);
+        return EXTRACT_RESULT_SKIPPED_UNSUPPORTED_ARCHIVE;
+    }
+
+    if ((detected_type == ARCHIVE_TYPE_LHA &&
+         extract_get_top_level_directory_from_lha(archive_path, game_folder_name, sizeof(game_folder_name))) ||
+        (detected_type == ARCHIVE_TYPE_LZX &&
+         extract_get_top_level_directory_from_lzx(archive_path, game_folder_name, sizeof(game_folder_name))))
     {
         log_debug(LOG_GENERAL,
                   "extract: using archive-listed top-level folder '%s' for '%s'\n",
@@ -1999,7 +2225,7 @@ LONG extract_process_downloaded_archive(const char *archive_path,
 
     extract_prepare_existing_target_folder(target_directory, game_folder_name);
 
-    extract_result = extract_archive_with_lha(archive_path, target_directory);
+    extract_result = extract_archive_with_dispatch(archive_path, archive_filename, target_directory);
     if (extract_result != 0)
     {
         return extract_result;

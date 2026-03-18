@@ -5,6 +5,7 @@ This document summarizes the features implemented during this chat session.
 ## Scope Added In This Session
 
 - Integrated archive extraction into the main download flow.
+- Added archive-type-aware extraction support for both `.lha` and `.lzx` files.
 - Added extraction configuration via CLI and INI.
 - Added startup validation for extraction requirements.
 - Added `ArchiveName.txt` metadata writing after successful extraction.
@@ -21,11 +22,15 @@ This document summarizes the features implemented during this chat session.
 - Added local-cache reuse tracking (explicitly recorded as no-download activity).
 - Added explicit runtime log line when local archive cache is reused.
 - Fixed `FORCEDOWNLOAD` behavior so it bypasses local-archive short-circuit and truly forces HTTP fetch.
+- Added extraction-skip reporting in session updates (including clear UnLZX install guidance when `.lzx` extraction is skipped).
 
 ## New Runtime Behavior
 
 1. Download completes successfully.
 2. If extraction is enabled, archive extraction is attempted.
+   - `.lha` archives are extracted with `c:lha`.
+   - `.lzx` archives are extracted with `c:unlzx` when available.
+   - If `c:unlzx` is missing, `.lzx` archives are skipped with a warning and processing continues.
 3. If marker-based extraction skip is enabled and marker matches, extraction is skipped.
 4. If pre-download marker skip is enabled and marker matches, download is skipped before the direct HTTP download runs.
 5. For heuristic misses, pre-download skip now checks `.archive_index` first (fast lookup) instead of scanning every subfolder.
@@ -57,6 +62,7 @@ Current categories:
 - `New` — newly downloaded archives with no strict identity/version update match.
 - `Updated` — downloaded archives that match an existing strict identity and have a higher version.
 - `Local cache reuse (no download)` — archive handled from existing local `GameFiles` cache.
+- `Extraction skipped` — archive extraction intentionally skipped (for example when `c:unlzx` is missing for `.lzx`).
 
 ### How UPDATED filenames are detected
 
@@ -112,7 +118,7 @@ Path format:
 File format:
 
 - Line 1: category text (for example `Games` or `Games (Beta & Unofficial)`).
-- Line 2: exact archive filename (for example `AbuSimbelProfanation_v1.0_AGA.lha`).
+- Line 2: exact archive filename (for example `AbuSimbelProfanation_v1.0_AGA.lha` or `Mnemonics_v1.0_AGA_Haujobb.lzx`).
 
 Matching rule:
 
@@ -176,7 +182,7 @@ Pre-download skip control:
 Maintenance commands (destructive, with confirmation prompts):
 
 - `PURGETEMP` permanently deletes `PROGDIR:temp` including all files and subfolders.
-- `PURGEARCHIVES` permanently deletes downloaded `.lha` archives under `GameFiles` recursively.
+- `PURGEARCHIVES` permanently deletes downloaded archives (`.lha` and `.lzx`) under `GameFiles` recursively.
 - `PURGEARCHIVES` does **not** delete extracted game folders.
 - Both commands print a brief warning and require explicit `Y` confirmation.
 

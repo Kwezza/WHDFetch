@@ -135,14 +135,14 @@ selection commands.
 
 ### EXTRACTONLY
 
-Processes only the `.lha` archives that are already present on disk in
+Processes only the archives (`.lha` and `.lzx`) that are already present on disk in
 `GameFiles/<pack>/<letter>/`. No game or demo archives are downloaded. Network activity may
 still occur for index and DAT metadata retrieval.
 
 This mode is designed for situations where you have previously downloaded archives,
 perhaps using `NOEXTRACT`, and now want to extract them without re-downloading. The
 program reads the DAT file for each selected pack, iterates over each ROM entry, checks
-whether the corresponding `.lha` exists locally, and if so, runs the extraction pipeline
+whether the corresponding archive exists locally, and if so, runs the extraction pipeline
 on it.
 
 When `EXTRACTONLY` is active, the `extract_archives` flag is forced to `TRUE` regardless of
@@ -181,21 +181,23 @@ WHDDownloader HELP
 
 ## Extraction Options
 
-By default, WHDDownloader extracts every `.lha` archive immediately after downloading it.
+By default, WHDDownloader extracts archives immediately after downloading them (`.lha` and `.lzx`).
 The extraction pipeline performs these steps:
 
-1. Runs `c:lha` to extract the archive contents into the target directory
+1. Runs `c:lha` for `.lha` archives or `c:unlzx` for `.lzx` archives
 2. Writes an `ArchiveName.txt` marker file inside the extracted game folder
 3. Applies a custom WHDLoad drawer icon, if available in `PROGDIR:Icons/`
 4. Updates the `.archive_index` cache so future runs can skip this archive instantly
-5. Optionally deletes the `.lha` archive after successful extraction
+5. Optionally deletes the archive file after successful extraction
+
+If `c:unlzx` is not installed, `.lzx` archives are skipped with a warning and the run continues.
 
 The options below control various aspects of this pipeline.
 
 ### NOEXTRACT
 
-Completely disables the extraction pipeline. Archives are downloaded and left as `.lha`
-files in `GameFiles/<pack>/<letter>/`. No `c:lha` is invoked, no `ArchiveName.txt` is
+Completely disables the extraction pipeline. Archives are downloaded and left as archive files
+(`.lha`/`.lzx`) in `GameFiles/<pack>/<letter>/`. No extractor command is invoked, no `ArchiveName.txt` is
 written, no icons are applied, no icons are unsnapshotted, no `.archive_index` entry is
 created from a fresh extraction, and no archives are deleted.
 
@@ -203,8 +205,8 @@ This is useful if you want to batch-download archives now and extract them later
 with `EXTRACTONLY`, or if you prefer to use an external extraction tool such as
 WHDArchiveExtractor from Aminet.
 
-When `NOEXTRACT` is active, the program also skips the startup validation check for
-`c:lha`, meaning the program will run even if `lha` is not installed.
+When `NOEXTRACT` is active, the program also skips extraction-tool startup validation,
+meaning the program will run even if extraction tools are not installed.
 
 Because extraction is skipped, the pre-download skip check
 (`skip_download_if_extracted`) still works based on any previous extractions, but no new
@@ -258,12 +260,12 @@ WHDDownloader DOWNLOADALL EXTRACTTO=Work:WHDLoad/
 
 ### KEEPARCHIVES
 
-Prevents the `.lha` archive files from being deleted after successful extraction. This
+Prevents archive files from being deleted after successful extraction. This
 overrides the compiled default and any INI setting.
 
 By default, `delete_archives_after_extract` is `TRUE`, meaning archives are removed once
 they have been successfully extracted. Using `KEEPARCHIVES` sets this to `FALSE`, leaving
-the `.lha` files in `GameFiles/<pack>/<letter>/` even after extraction completes.
+the archive files in `GameFiles/<pack>/<letter>/` even after extraction completes.
 
 This is useful if you want to maintain a local archive cache alongside the extracted games,
 perhaps for backup purposes or to re-extract later with different options.
@@ -271,7 +273,7 @@ perhaps for backup purposes or to re-extract later with different options.
 `KEEPARCHIVES` opposes `DELETEARCHIVES`. If both are supplied, they conflict and only one
 final effective setting can apply.
 
-**Example — download, extract, but keep the `.lha` files:**
+**Example — download, extract, but keep the archive files:**
 
 ```text
 WHDDownloader DOWNLOADGAMES KEEPARCHIVES

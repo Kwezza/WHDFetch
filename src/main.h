@@ -130,6 +130,7 @@ typedef struct download_option {
     BOOL force_download;
     const char *extract_path;
     BOOL delete_archives_after_extract;
+    BOOL purge_archives;
     int extract_existing_only;
     BOOL use_custom_icons;
     BOOL unsnapshot_icons;
