@@ -311,6 +311,51 @@ void trim(char *str)
     memmove(str, start, end - start + 2);
 }
 
+ULONG clamp_timeout_seconds(ULONG requested)
+{
+    if (requested < TIMEOUT_SECONDS_MIN)
+    {
+        return TIMEOUT_SECONDS_MIN;
+    }
+
+    if (requested > TIMEOUT_SECONDS_MAX)
+    {
+        return TIMEOUT_SECONDS_MAX;
+    }
+
+    return requested;
+}
+
+BOOL parse_timeout_seconds(const char *value, ULONG *out_seconds, ULONG *raw_value)
+{
+    char *endptr;
+    unsigned long parsed;
+
+    if (value == NULL || value[0] == '\0' || out_seconds == NULL)
+    {
+        return FALSE;
+    }
+
+    parsed = strtoul(value, &endptr, 10);
+    if (endptr == value || *endptr != '\0')
+    {
+        return FALSE;
+    }
+
+    if (parsed == 0)
+    {
+        return FALSE;
+    }
+
+    if (raw_value != NULL)
+    {
+        *raw_value = (ULONG)parsed;
+    }
+
+    *out_seconds = clamp_timeout_seconds((ULONG)parsed);
+    return TRUE;
+}
+
 void wait_char(void)
 {   
     /* getchar(); */

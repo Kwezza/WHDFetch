@@ -133,6 +133,7 @@ typedef struct download_option {
     int extract_existing_only;
     BOOL use_custom_icons;
     BOOL unsnapshot_icons;
+    ULONG timeout_seconds;
 } download_option;
 
 

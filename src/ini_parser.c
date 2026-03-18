@@ -183,6 +183,30 @@ static void apply_global_key_value(const char *key, const char *value, download_
         return;
     }
 
+    if (stricmp_custom(key, "timeout_seconds") == 0)
+    {
+        ULONG parsed_timeout;
+        ULONG raw_timeout;
+
+        if (!parse_timeout_seconds(value, &parsed_timeout, &raw_timeout))
+        {
+            log_warning(LOG_GENERAL, "ini: invalid timeout_seconds value '%s' ignored\n", value);
+            return;
+        }
+
+        if (parsed_timeout != raw_timeout)
+        {
+            log_warning(LOG_GENERAL,
+                        "ini: timeout_seconds clamped to %ld seconds (%ld-%ld allowed)\n",
+                        (long)parsed_timeout,
+                        (long)TIMEOUT_SECONDS_MIN,
+                        (long)TIMEOUT_SECONDS_MAX);
+        }
+
+        download_opts->timeout_seconds = parsed_timeout;
+        return;
+    }
+
     if (stricmp_custom(key, "extract_archives") == 0)
     {
         if (!parse_boolean_value(value, &bool_value))

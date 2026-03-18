@@ -243,6 +243,36 @@ static void log_effective_configuration(const whdload_pack_def *pack_defs,
     }
 }
 
+static void apply_timeout_argument(download_option *options, const char *value)
+{
+    if (options == NULL || value == NULL)
+    {
+        return;
+    }
+
+    ULONG parsed_value;
+    ULONG raw_value;
+
+    if (!parse_timeout_seconds(value, &parsed_value, &raw_value))
+    {
+        log_warning(LOG_GENERAL, "main: invalid TIMEOUT value '%s' ignored (keeping %ld seconds)",
+                    value, (long)options->timeout_seconds);
+        return;
+    }
+
+    if (parsed_value != raw_value)
+    {
+        log_warning(LOG_GENERAL,
+                    "main: TIMEOUT=%ld out of range, clamped to %ld seconds (%ld-%ld)",
+                    (long)raw_value,
+                    (long)parsed_value,
+                    (long)TIMEOUT_SECONDS_MIN,
+                    (long)TIMEOUT_SECONDS_MAX);
+    }
+
+    options->timeout_seconds = parsed_value;
+}
+
 /*
  * do_shutdown() - called before every return from main().
  * Logs each step so we can see exactly how far the shutdown gets before
@@ -577,6 +607,11 @@ int main(int argc, char *argv[])
         {
             download_options.use_custom_icons = FALSE;
         }
+
+        if (strncasecmp_custom(argv[i], "TIMEOUT=", 8) == 0)
+        {
+            apply_timeout_argument(&download_options, argv[i] + 8);
+        }
     }
 
     if (!validate_extraction_startup_configuration(&download_options))
@@ -658,7 +693,7 @@ int main(int argc, char *argv[])
         log_info(LOG_GENERAL, "main: calling ad_init_download_lib_taglist...\n");
         if (!ad_init_download_lib_taglist(
                 ADTAG_Verbose, FALSE,             
-            ADTAG_Timeout, 30,               
+            ADTAG_Timeout, download_options.timeout_seconds,               
                 ADTAG_BufferSize, 16384,         
                 ADTAG_UserAgent, "AmigaRetroplayDownloader/1.0", 
                 ADTAG_MaxRetries, 2,             
@@ -959,6 +994,7 @@ void setup_app_defaults(struct whdload_pack_def WHDLoadPackDefs[], struct downlo
         downloadOptions->extract_existing_only = 0;
         downloadOptions->use_custom_icons = TRUE;
         downloadOptions->unsnapshot_icons = TRUE;
+        downloadOptions->timeout_seconds = 30;
     }
 
     WHDLoadPackDefs[DEMOS_BETA].count_existing_files_skipped = 0;
@@ -2027,7 +2063,9 @@ LONG execute_archive_download_command(const char *downloadWHDFile,
 
         extract_game_info_from_filename(downloadWHDFile, &metadata);
         if (metadata.title[0] != '\0' &&
-            extract_index_find_by_title(metadata.title, old_archive_name, sizeof(old_archive_name)))
+            extract_index_find_update_candidate(downloadWHDFile,
+                                                old_archive_name,
+                                                sizeof(old_archive_name)))
         {
             old_archive = old_archive_name;
         }

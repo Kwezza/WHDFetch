@@ -17,7 +17,7 @@ This document summarizes the features implemented during this chat session.
 - Added force/override flags for both download and extraction skip systems.
 - Updated help text, sample INI, and README documentation.
 - Added session report module to persist end-of-run archive activity.
-- Added NEW vs UPDATED classification for successfully downloaded archives.
+- Added NEW vs UPDATED classification for successfully downloaded archives using strict metadata identity + version progression.
 - Added local-cache reuse tracking (explicitly recorded as no-download activity).
 - Added explicit runtime log line when local archive cache is reused.
 - Fixed `FORCEDOWNLOAD` behavior so it bypasses local-archive short-circuit and truly forces HTTP fetch.
@@ -38,6 +38,9 @@ This document summarizes the features implemented during this chat session.
 10. If `FORCEDOWNLOAD` is set, local archive short-circuit is bypassed and network download path is used.
 11. Session report file is written at end of run when any reportable activity exists, grouped by pack with totals.
 
+12. UPDATED detection now uses strict identity matching, not title-prefix matching.
+13. Archives with missing or non-numeric version tokens are always treated as `New` (never `Updated`).
+
 ## Session Report System (What Users See)
 
 Purpose:
@@ -51,9 +54,42 @@ Location:
 
 Current categories:
 
-- `New` — newly downloaded archives not matched to prior title in index.
-- `Updated` — downloaded archives matched to an existing title (version/variant bump path).
+- `New` — newly downloaded archives with no strict identity/version update match.
+- `Updated` — downloaded archives that match an existing strict identity and have a higher version.
 - `Local cache reuse (no download)` — archive handled from existing local `GameFiles` cache.
+
+### How UPDATED filenames are detected
+
+Update classification is performed from the in-memory `.archive_index` cache at download time,
+before extraction updates the cache entry.
+
+Strict identity fields (all must match):
+
+- `title`
+- `special` (cracker/group/special token segment)
+- `machineType`
+- `videoFormat`
+- `language`
+- `mediaFormat`
+- `sps`
+- `numberOfDisks`
+
+Version rule:
+
+- Candidate old archive is considered an update source only when the new filename version is
+   strictly greater than the old filename version.
+- If multiple matching old candidates exist, the highest older version is selected as the
+   `(was ...)` source in the report.
+
+Missing-version hardening:
+
+- If the new archive has no numeric version token, it is treated as `New`.
+- If a cached old candidate has no numeric version token, it is ignored for update matching.
+
+Why this change was made:
+
+- Prevent false updates where many different releases share the same primary title prefix
+   (for example multiple `Megademo_*` variants by different groups).
 
 Console behavior:
 

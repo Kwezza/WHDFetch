@@ -1,7 +1,9 @@
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
 
 #include "extract.h"
+#include "gamefile_parser.h"
 #include "icon_unsnapshot.h"
 #include "log/log.h"
 #include "platform/platform.h"
@@ -660,6 +662,316 @@ BOOL extract_index_find_by_title(const char *title,
     }
 
     return FALSE;
+}
+
+static int extract_compare_version_strings(const char *left, const char *right)
+{
+    const unsigned char *l = (const unsigned char *)left;
+    const unsigned char *r = (const unsigned char *)right;
+
+    if (left == NULL || right == NULL)
+    {
+        if (left == right)
+        {
+            return 0;
+        }
+
+        return (left == NULL) ? -1 : 1;
+    }
+
+    while (*l != '\0' || *r != '\0')
+    {
+        if (isdigit(*l) && isdigit(*r))
+        {
+            unsigned long ln = 0;
+            unsigned long rn = 0;
+
+            while (*l == '0')
+            {
+                l++;
+            }
+
+            while (*r == '0')
+            {
+                r++;
+            }
+
+            while (isdigit(*l))
+            {
+                ln = (ln * 10UL) + (unsigned long)(*l - '0');
+                l++;
+            }
+
+            while (isdigit(*r))
+            {
+                rn = (rn * 10UL) + (unsigned long)(*r - '0');
+                r++;
+            }
+
+            if (ln != rn)
+            {
+                return (ln > rn) ? 1 : -1;
+            }
+
+            continue;
+        }
+
+        while (*l != '\0' && !isalnum(*l))
+        {
+            l++;
+        }
+
+        while (*r != '\0' && !isalnum(*r))
+        {
+            r++;
+        }
+
+        if (*l == '\0' || *r == '\0')
+        {
+            break;
+        }
+
+        if (isdigit(*l) || isdigit(*r))
+        {
+            continue;
+        }
+
+        {
+            int lc = tolower(*l);
+            int rc = tolower(*r);
+
+            if (lc != rc)
+            {
+                return (lc > rc) ? 1 : -1;
+            }
+        }
+
+        l++;
+        r++;
+    }
+
+    while (*l != '\0' && !isalnum(*l))
+    {
+        l++;
+    }
+
+    while (*r != '\0' && !isalnum(*r))
+    {
+        r++;
+    }
+
+    if (*l == '\0' && *r == '\0')
+    {
+        return 0;
+    }
+
+    return (*l == '\0') ? -1 : 1;
+}
+
+static BOOL extract_has_numeric_version_token(const char *version)
+{
+    const unsigned char *ptr = (const unsigned char *)version;
+
+    if (version == NULL || version[0] == '\0')
+    {
+        return FALSE;
+    }
+
+    while (*ptr != '\0')
+    {
+        if (isdigit(*ptr))
+        {
+            return TRUE;
+        }
+
+        ptr++;
+    }
+
+    return FALSE;
+}
+
+static BOOL extract_strings_equal_ci(const char *left, const char *right)
+{
+    size_t left_len;
+    size_t right_len;
+
+    if (left == NULL || right == NULL)
+    {
+        return (left == right) ? TRUE : FALSE;
+    }
+
+    left_len = strlen(left);
+    right_len = strlen(right);
+    if (left_len != right_len)
+    {
+        return FALSE;
+    }
+
+    if (strncasecmp_custom(left, right, left_len) == 0)
+    {
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+static BOOL extract_parse_archive_metadata(const char *archive_name, game_metadata *out_metadata)
+{
+    if (archive_name == NULL || archive_name[0] == '\0' || out_metadata == NULL)
+    {
+        return FALSE;
+    }
+
+    memset(out_metadata, 0, sizeof(*out_metadata));
+    extract_game_info_from_filename(archive_name, out_metadata);
+    if (out_metadata->title[0] == '\0')
+    {
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+static BOOL extract_is_same_release_identity(const game_metadata *new_metadata,
+                                             const game_metadata *old_metadata)
+{
+    if (new_metadata == NULL || old_metadata == NULL)
+    {
+        return FALSE;
+    }
+
+    if (!extract_strings_equal_ci(new_metadata->title, old_metadata->title))
+    {
+        return FALSE;
+    }
+
+    if (!extract_strings_equal_ci(new_metadata->special, old_metadata->special))
+    {
+        return FALSE;
+    }
+
+    if (!extract_strings_equal_ci(new_metadata->machineType, old_metadata->machineType))
+    {
+        return FALSE;
+    }
+
+    if (!extract_strings_equal_ci(new_metadata->videoFormat, old_metadata->videoFormat))
+    {
+        return FALSE;
+    }
+
+    if (!extract_strings_equal_ci(new_metadata->language, old_metadata->language))
+    {
+        return FALSE;
+    }
+
+    if (!extract_strings_equal_ci(new_metadata->mediaFormat, old_metadata->mediaFormat))
+    {
+        return FALSE;
+    }
+
+    if (!extract_strings_equal_ci(new_metadata->sps, old_metadata->sps))
+    {
+        return FALSE;
+    }
+
+    if (new_metadata->numberOfDisks != old_metadata->numberOfDisks)
+    {
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+BOOL extract_index_find_update_candidate(const char *new_archive_filename,
+                                         char *out_old_archive,
+                                         size_t out_size)
+{
+    game_metadata new_metadata = {0};
+    char best_archive_name[EXTRACT_MAX_NAME] = {0};
+    char best_version[MAX_VERSION_LEN] = {0};
+    BOOL found = FALSE;
+    int i;
+
+    if (new_archive_filename == NULL || new_archive_filename[0] == '\0' ||
+        out_old_archive == NULL || out_size == 0)
+    {
+        return FALSE;
+    }
+
+    if (!g_archive_index_cache.loaded)
+    {
+        return FALSE;
+    }
+
+    if (!extract_parse_archive_metadata(new_archive_filename, &new_metadata))
+    {
+        return FALSE;
+    }
+
+    if (!extract_has_numeric_version_token(new_metadata.version))
+    {
+        return FALSE;
+    }
+
+    for (i = 0; i < g_archive_index_cache.entry_count; i++)
+    {
+        const char *archive_name;
+        game_metadata old_metadata = {0};
+        int cmp_new_vs_old;
+
+        archive_name = g_archive_index_cache.archive_names[i];
+        if (archive_name == NULL || archive_name[0] == '\0')
+        {
+            continue;
+        }
+
+        if (strcmp(archive_name, new_archive_filename) == 0)
+        {
+            continue;
+        }
+
+        if (!extract_parse_archive_metadata(archive_name, &old_metadata))
+        {
+            continue;
+        }
+
+        if (!extract_is_same_release_identity(&new_metadata, &old_metadata))
+        {
+            continue;
+        }
+
+        if (!extract_has_numeric_version_token(old_metadata.version))
+        {
+            continue;
+        }
+
+        cmp_new_vs_old = extract_compare_version_strings(new_metadata.version, old_metadata.version);
+        if (cmp_new_vs_old <= 0)
+        {
+            continue;
+        }
+
+        if (!found || extract_compare_version_strings(old_metadata.version, best_version) > 0)
+        {
+            strncpy(best_archive_name, archive_name, sizeof(best_archive_name) - 1);
+            best_archive_name[sizeof(best_archive_name) - 1] = '\0';
+
+            strncpy(best_version, old_metadata.version, sizeof(best_version) - 1);
+            best_version[sizeof(best_version) - 1] = '\0';
+
+            found = TRUE;
+        }
+    }
+
+    if (!found)
+    {
+        return FALSE;
+    }
+
+    strncpy(out_old_archive, best_archive_name, out_size - 1);
+    out_old_archive[out_size - 1] = '\0';
+    return TRUE;
 }
 
 BOOL extract_index_update(const char *target_directory,

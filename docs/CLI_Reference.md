@@ -427,9 +427,22 @@ filter if you are targeting an OCS or ECS Amiga such as an A500, A600, or A2000.
 WHDDownloader DOWNLOADGAMES SKIPAGA
 ```
 
+
+
+
+### INI: timeout_seconds
+
+Set `timeout_seconds` in the `[global]` section of `PROGDIR:WHDDownloader.ini` to adjust the
+default timeout for every run. The CLI `TIMEOUT=<seconds>` argument still overrides this value
+for the current invocation, but the INI provides a persistent fallback.
+
+Values outside the 5-60 second range are clamped, and invalid values are ignored.
+
+
 ### SKIPCD
 
 Skips all archives for CD-based media formats, including CD32, CDTV, and CDRom titles.
+
 These typically require a CD drive or CD32 hardware that may not be available in a standard
 WHDLoad setup.
 
@@ -479,6 +492,26 @@ WHDDownloader DOWNLOADGAMES SKIPAGA SKIPCD SKIPNTSC SKIPNONENGLISH
 ```
 
 ---
+
+## Connection Timeout
+
+### TIMEOUT=<seconds>
+
+Controls the maximum number of seconds WHDDownloader waits for any HTTP activity before
+aborting the current transfer. The timeout applies to every HTTP download the program performs
+during a run: the index.html fetch, the ZIP/DAT downloads, and the individual `.lha` pack
+downloads. A timeout is triggered from the shared download library whenever a socket stays idle
+for longer than the configured value.
+
+Valid values are 5 through 60 seconds. The default is 30 seconds when no other source overrides
+it. CLI arguments are evaluated after the INI, so `TIMEOUT=45` will supersede an
+`timeout_seconds` setting in the INI for that run.
+
+**Example — increase the timeout for a slow connection:**
+
+```text
+WHDDownloader DOWNLOADALL TIMEOUT=45
+```
 
 ## Output and Reporting Options
 
@@ -602,6 +635,7 @@ In short, CLI pack-selection commands are authoritative whenever at least one is
 | NODOWNLOADSKIP    | `skip_download_if_extracted=false`    | `[global]`          | Advanced override              |
 | FORCEDOWNLOAD     | `force_download=true`                 | `[global]`          | Stronger than `NODOWNLOADSKIP` |
 | NOICONS           | `use_custom_icons=false`              | `[global]`          | Also disables unsnapshotting   |
+| TIMEOUT=<seconds> | `timeout_seconds=<seconds>`           | `[global]`          | Range 5-60 seconds, CLI overrides INI |
 | SKIPAGA           | `skip_aga=true`                       | `[filters]`         | Filter                         |
 | SKIPCD            | `skip_cd=true`                        | `[filters]`         | Filter                         |
 | SKIPNTSC          | `skip_ntsc=true`                      | `[filters]`         | Filter                         |
@@ -631,6 +665,7 @@ are internal behaviour flags shown for completeness.
 | `skip_cd`                       | `0` (disabled)                              |
 | `skip_ntsc`                     | `0` (disabled)                              |
 | `skip_non_english`              | `0` (disabled)                              |
+| `timeout_seconds`               | `30` seconds (clamped 5–60)                |
 
 ---
 

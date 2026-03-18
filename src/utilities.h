@@ -4,6 +4,10 @@
 #include <exec/types.h>
 
 /* Function prototypes */
+/* Timeout constants */
+#define TIMEOUT_SECONDS_MIN 5
+#define TIMEOUT_SECONDS_MAX 60
+
 int stricmp_custom(const char *s1, const char *s2);
 int strncasecmp_custom(const char *s1, const char *s2, size_t n);
 BOOL does_file_or_folder_exist(const char *filename, int appendWorkingDirectory);
@@ -13,4 +17,6 @@ void trim(char *str);
 int get_workbench_version(void);
 //char *GetWorkbenchVersionString(void);
 char *run_dos_command_and_get_first_line(const char *cmd);
+ULONG clamp_timeout_seconds(ULONG requested);
+BOOL parse_timeout_seconds(const char *value, ULONG *out_seconds, ULONG *raw_value);
 #endif /* UTILITIES_H */
