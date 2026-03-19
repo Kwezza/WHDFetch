@@ -1,5 +1,7 @@
  whdfetch DOWNLOADBETADEMOS QUIET extractto=PC:Programming/WHDDownloader/Bin/Amiga/extracted 
  whdfetch DOWNLOADBETADEMOS QUIET extractto=PC:Programming/WHDDownloader/Bin/Amiga/extracted DELETEARCHIVES 
+ 
+ whdfetch DOWNLOADBETADEMOS QUIET extractto=work:WHDLoad
 
 
  DELETE PC:Programming/WHDDownloader/Bin/Amiga/extracted PC:Programming/WHDDownloader/Bin/Amiga/GameFiles PC:Programming/WHDDownloader/Bin/Amiga/temp ALL 

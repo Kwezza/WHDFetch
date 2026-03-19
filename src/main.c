@@ -2198,6 +2198,19 @@ LONG execute_archive_download_command(const char *downloadWHDFile,
 
     sprintf(fileName, "%s/%s/%s/%s", DIR_GAME_DOWNLOADS, WHDLoadPackDefs->extracted_pack_dir, downloadFirstLetter, downloadWHDFile);
     sanitize_amiga_file_path(fileName);
+
+    /* If a .downloading marker exists from a previous interrupted run,
+       delete the partial archive and fall through to re-download. */
+    if (has_download_marker(fileName))
+    {
+        printf(textReset "Incomplete download detected, re-downloading: %s\n", downloadWHDFile);
+        log_info(LOG_DOWNLOAD,
+                 "download: found .downloading marker for '%s', deleting partial file and re-downloading\n",
+                 downloadWHDFile);
+        DeleteFile((STRPTR)fileName);   /* may not exist — that's OK */
+        delete_download_marker(fileName);
+    }
+
     if (does_file_or_folder_exist(fileName, 1) &&
         !(download_options != NULL && download_options->force_download == TRUE))
     {
@@ -2286,12 +2299,16 @@ LONG execute_archive_download_command(const char *downloadWHDFile,
         download_silent = TRUE;
     }
 
+    /* Drop a marker so interrupted downloads are detected on next run */
+    create_download_marker(fileName);
+
     /* Keep archive downloads visible; QUIET currently only suppresses UnZip output. */
     returnCode = (LONG)ad_download_http_file_with_retries(downloadUrl, fileName, download_silent);
 
     if (returnCode == AD_CANCELLED)
     {
         log_info(LOG_DOWNLOAD, "download: user cancelled '%s' via Ctrl-C\n", downloadWHDFile);
+        /* Leave partial file + marker on disk; next run will clean up */
         return 20;
     }
 
@@ -2302,8 +2319,21 @@ LONG execute_archive_download_command(const char *downloadWHDFile,
                   "download: direct HTTP download failed for '%s' (code=%ld)\n",
                   downloadWHDFile,
                   (long)returnCode);
+
+        /* For non-retryable server errors, clean up marker + partial file
+           so we don't futilely retry on every subsequent run. */
+        if (returnCode == AD_BAD_REQUEST || returnCode == AD_UNAUTHORIZED ||
+            returnCode == AD_FORBIDDEN || returnCode == AD_NOT_FOUND)
+        {
+            DeleteFile((STRPTR)fileName);
+            delete_download_marker(fileName);
+        }
+
         return returnCode;
     }
+
+    /* Download succeeded — remove the .downloading marker */
+    delete_download_marker(fileName);
 
     files_downloaded = files_downloaded + 1;
     WHDLoadPackDefs->count_new_files_downloaded = WHDLoadPackDefs->count_new_files_downloaded + 1;

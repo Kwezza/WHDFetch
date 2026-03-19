@@ -26,4 +26,9 @@ char *run_dos_command_and_get_first_line(const char *cmd);
 ULONG clamp_timeout_seconds(ULONG requested);
 BOOL parse_timeout_seconds(const char *value, ULONG *out_seconds, ULONG *raw_value);
 archive_type detect_archive_type_from_filename(const char *filename);
+
+/* Download marker helpers — detect/clean up incomplete downloads */
+BOOL create_download_marker(const char *archive_path);
+void delete_download_marker(const char *archive_path);
+BOOL has_download_marker(const char *archive_path);
 #endif /* UTILITIES_H */

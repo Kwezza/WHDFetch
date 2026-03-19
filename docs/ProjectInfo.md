@@ -160,6 +160,45 @@ Stale entry rule:
 
 - If index maps to a folder that no longer exists, entry is removed and file is corrected on flush.
 
+## Incomplete Download Recovery (`.downloading` marker)
+
+Purpose:
+
+- Detect and recover from interrupted downloads (Ctrl+C, network failures, crashes).
+- Without this, a partial `.lha` file left on disk would be treated as a valid archive on the
+  next run — extraction would fail, and the file would never be re-downloaded.
+
+How it works:
+
+1. Before a download begins, an empty marker file is created alongside the archive:
+   `GameFiles/<pack>/<letter>/<archive>.downloading`
+2. If the download completes successfully, the marker is deleted immediately.
+3. If the download is interrupted (Ctrl+C, timeout, socket error), the marker and partial
+   archive both remain on disk.
+4. On the next run, before the normal "file already exists" skip check, the marker is detected.
+   The partial archive is deleted, the marker is removed, and the file is re-downloaded cleanly.
+
+Non-retryable server errors (400, 401, 403, 404):
+
+- Both the marker and partial archive are deleted immediately after the error.
+- This prevents futile re-download attempts on every subsequent run for files that cannot be
+  obtained from the server.
+
+Marker file details:
+
+- Location: same directory as the `.lha` archive, named `<archive_filename>.downloading`
+- Example: `GameFiles/Games/A/Academy_v1.2.lha.downloading`
+- Content: empty (zero bytes) — only the file's existence matters.
+- The marker is never written to `.archive_index` or tracked in session reports.
+
+Edge cases:
+
+- If a user manually creates a `.downloading` file next to an archive, it will trigger
+  re-download of that archive on the next run.
+- If the partial `.lha` does not exist when recovery runs (e.g. user deleted it manually),
+  `DeleteFile` on a non-existent file is harmless — the marker is still cleaned up and the
+  download proceeds normally.
+
 ## CLI Options Added/Active
 
 Extraction control:

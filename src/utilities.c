@@ -566,3 +566,59 @@ char *run_dos_command_and_get_first_line(const char *cmd)
 
     return result;
 }
+
+/*------------------------------------------------------------------------*/
+/* Download marker helpers                                                */
+/*                                                                        */
+/* A zero-byte "<archive>.downloading" file is created next to the .lha   */
+/* before download starts and deleted on success.  If the program is      */
+/* interrupted, the marker survives and the next run knows to delete the  */
+/* partial archive and re-download it.                                    */
+/*------------------------------------------------------------------------*/
+
+#define DOWNLOAD_MARKER_SUFFIX ".downloading"
+
+static void build_marker_path(const char *archive_path, char *out, size_t out_size)
+{
+    strncpy(out, archive_path, out_size - sizeof(DOWNLOAD_MARKER_SUFFIX));
+    out[out_size - sizeof(DOWNLOAD_MARKER_SUFFIX)] = '\0';
+    strcat(out, DOWNLOAD_MARKER_SUFFIX);
+}
+
+BOOL create_download_marker(const char *archive_path)
+{
+    char marker_path[512];
+    BPTR fh;
+
+    build_marker_path(archive_path, marker_path, sizeof(marker_path));
+    fh = Open(marker_path, MODE_NEWFILE);
+    if (!fh)
+    {
+        return FALSE;
+    }
+    Close(fh);
+    return TRUE;
+}
+
+void delete_download_marker(const char *archive_path)
+{
+    char marker_path[512];
+
+    build_marker_path(archive_path, marker_path, sizeof(marker_path));
+    DeleteFile(marker_path);
+}
+
+BOOL has_download_marker(const char *archive_path)
+{
+    char marker_path[512];
+    BPTR lock;
+
+    build_marker_path(archive_path, marker_path, sizeof(marker_path));
+    lock = Lock(marker_path, ACCESS_READ);
+    if (lock)
+    {
+        UnLock(lock);
+        return TRUE;
+    }
+    return FALSE;
+}
