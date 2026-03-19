@@ -5,7 +5,7 @@ Use this checklist to verify each INI key with one targeted runtime test.
 ## How to run
 1. Copy one test key into `PROGDIR:whdfetch.ini` (and keep all other keys at defaults from `docs/whdfetch.ini.sample`).
   Legacy fallback also supports `PROGDIR:WHDDownloader.ini` when the new file is absent.
-2. Run `whdfetch DOWNLOADGAMES QUIET`.
+2. Run `whdfetch DOWNLOADGAMES VERBOSE`.
 3. Check `PROGDIR:logs/general_*.log` for the expected `config[after-ini]` or pipeline line.
 
 ## Global keys
@@ -52,6 +52,9 @@ Use this checklist to verify each INI key with one targeted runtime test.
 - `skip_cd`
   - Test: set `true`.
   - Expected: `config[after-ini]: ... skip_cd=1 ...`.
+- `verbose_output`
+  - Test: set `verbose_output=true`.
+  - Expected: `config[after-ini]: ... verbose=1 ...` and detailed DAT unzip output.
 - `skip_ntsc`
   - Test: set `true`.
   - Expected: `config[after-ini]: ... skip_ntsc=1 ...`.
@@ -60,5 +63,5 @@ Use this checklist to verify each INI key with one targeted runtime test.
   - Expected: `config[after-ini]: ... skip_non_english=1 ...`.
 
 ## CLI precedence check
-- Test: set `skip_aga=false` in INI, then run `whdfetch DOWNLOADGAMES SKIPAGA QUIET`.
+- Test: set `skip_aga=false` in INI, then run `whdfetch DOWNLOADGAMES SKIPAGA`.
 - Expected: `config[after-cli]: ... skip_aga=1 ...`.

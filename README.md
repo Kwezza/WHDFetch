@@ -81,7 +81,7 @@ Games will be downloaded to `GameFiles/Games/` organised into letter sub-folders
 |----------|--------|
 | `NOICONS` | Skip icon replacement after extraction |
 | `NOSKIP` | Print a line for every skipped title |
-| `QUIET` | Suppress unzip output |
+| `VERBOSE` | Show detailed unzip output (default is quiet) |
 | `DISABLECOUNTERS` | Disable counter features (including pre-count and terminal counter display) |
 | `CRCCHECK` | Enable CRC verification for downloaded archives |
 
@@ -105,6 +105,7 @@ download_website=http://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20Packs/
 extract_archives=true
 skip_existing_extractions=true
 skip_download_if_extracted=true
+verbose_output=false
 extract_path=                     ; empty = extract in place
 delete_archives_after_extract=true
 use_custom_icons=true

@@ -244,6 +244,18 @@ static void apply_global_key_value(const char *key, const char *value, download_
         return;
     }
 
+    if (stricmp_custom(key, "verbose_output") == 0)
+    {
+        if (!parse_boolean_value(value, &bool_value))
+        {
+            log_warning(LOG_GENERAL, "ini: invalid boolean value '%s' ignored\n", value);
+            return;
+        }
+
+        download_opts->verbose_output = bool_value ? 1 : 0;
+        return;
+    }
+
     if (stricmp_custom(key, "force_download") == 0)
     {
         if (!parse_boolean_value(value, &bool_value))

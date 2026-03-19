@@ -29,7 +29,7 @@ This document summarizes the features implemented during this chat session.
 - Added DAT list metadata persistence in TSV form (`name<TAB>size<TAB>crc`) with backward compatibility for legacy name-only lines.
 - Added unified retry handling for network and CRC mismatch failures under one attempt budget.
 - Added download-failure reporting section in updates reports (with per-pack and total failure counts).
-- Added explicit CRC status output during archive processing (`CRC OK` / `CRC failed`) regardless of `QUIET` mode.
+- Added explicit CRC status output during archive processing (`CRC OK` / `CRC failed`) regardless of `VERBOSE` mode.
 - Added `CRCCHECK` CLI and INI setting (`crccheck` / `crc_check`) to enable CRC verification (default OFF).
 - Added startup console status line showing CRC mode (`ON` or `OFF`) to surface feature availability.
 

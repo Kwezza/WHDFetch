@@ -142,7 +142,7 @@ SKIP_NTSC            Filter: skip NTSC games
 SKIP_NONENG          Filter: skip non-English versions
 NOICONS              Skip icon replacement
 NOSKIP               Show all skip messages
-QUIET                Silent unzip output
+VERBOSE              Detailed unzip output (default is quiet)
 ```
 
 ---
@@ -157,6 +157,7 @@ download_website=http://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20Packs/
 extract_archives=true
 skip_existing_extractions=true
 skip_download_if_extracted=true
+verbose_output=false
 extract_path=                     ; empty = extract in place
 delete_archives_after_extract=true
 use_custom_icons=true

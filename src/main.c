@@ -470,10 +470,10 @@ static void log_effective_configuration(const whdload_pack_def *pack_defs,
     }
 
     log_info(LOG_GENERAL,
-             "config[%s]: options no_skip=%ld quiet=%ld disable_counters=%ld crc_check=%ld extract=%ld extract_only=%ld skip_existing=%ld force_extract=%ld skip_download=%ld force_download=%ld extract_path='%s' delete_archives=%ld purge_archives=%ld skip_aga=%ld skip_cd=%ld skip_ntsc=%ld skip_non_english=%ld use_custom_icons=%ld unsnapshot_icons=%ld\n",
+             "config[%s]: options no_skip=%ld verbose=%ld disable_counters=%ld crc_check=%ld extract=%ld extract_only=%ld skip_existing=%ld force_extract=%ld skip_download=%ld force_download=%ld extract_path='%s' delete_archives=%ld purge_archives=%ld skip_aga=%ld skip_cd=%ld skip_ntsc=%ld skip_non_english=%ld use_custom_icons=%ld unsnapshot_icons=%ld\n",
              stage,
              (long)download_options->no_skip_messages,
-             (long)download_options->quiet_output,
+             (long)download_options->verbose_output,
              (long)download_options->disable_counters,
              (long)download_options->crc_check,
              (long)download_options->extract_archives,
@@ -637,7 +637,7 @@ const int MAGAZINES = 4;
 int files_downloaded = 0;
 int files_skipped = 0;
 int no_skip_messages = 0;
-int quiet_output = 0;
+int verbose_output = 0;
 
 int skip_AGA = 0, skip_CD = 0, skip_NTSC = 0, skip_NonEnglish = 0;
 
@@ -648,7 +648,7 @@ long start_time;
 #define TEMPLATE "HELP/S,DOWNLOADGAMES/S,DOWNLOADBETAGAMES/S,"                       \
                  "DOWNLOADDEMOS/S,DOWNLOADBETADEMOS/S,DOWNLOADMAGS/S,DOWNLOADALL/S," \
                  "NOSKIPREPORT/S,SKIPAGA/S,SKIPCD/S,"                                \
-                 "SKIPNTSC/S,SKIPNONENGLISH/S,QUIET/S,NOEXTRACT/S,"                  \
+                 "SKIPNTSC/S,SKIPNONENGLISH/S,VERBOSE/S,NOEXTRACT/S,"                  \
                  "EXTRACTTO/K,KEEPARCHIVES/S,DELETEARCHIVES/S,PURGEARCHIVES/S,EXTRACTONLY/S,FORCEEXTRACT/S," \
                  "NODOWNLOADSKIP/S,FORCEDOWNLOAD/S,NOICONS/S,DISABLECOUNTERS/S,CRCCHECK/S"
 
@@ -1071,9 +1071,9 @@ int main(int argc, char *argv[])
         if (strncasecmp_custom(argv[i], "NOSKIPREPOR", strlen(argv[i])) == 0)
             download_options.no_skip_messages = 1;
 
-        if (strncasecmp_custom(argv[i], "QUIET", strlen(argv[i])) == 0)
+        if (strncasecmp_custom(argv[i], "VERBOSE", strlen(argv[i])) == 0)
         {
-            download_options.quiet_output = 1;
+            download_options.verbose_output = 1;
         }
 
         if (strncasecmp_custom(argv[i], "NOEXTRACT", strlen(argv[i])) == 0)
@@ -1286,7 +1286,7 @@ int main(int argc, char *argv[])
 
     /* Extract DAT files from downloaded archives */
     printf("\n" textReset textBold "Extracting DAT files..." textReset "\n");
-    extract_Zip_file_and_rename(DIR_ZIP_FILES, whdload_pack_defs, 5, download_options.quiet_output);
+    extract_Zip_file_and_rename(DIR_ZIP_FILES, whdload_pack_defs, 5, download_options.verbose_output);
 
     /* Process the extracted DAT files */
     printf("\n%s%sProcessing DAT Files...%s\n", textReset, textBold, textReset);
@@ -1517,7 +1517,7 @@ BOOL startup_text_and_needed_progs_are_installed(int number_of_args)
             add_line(&tb, "  SKIPCD/S<ex23>Skip CDTV/CD32 packages");
             add_line(&tb, "  SKIPNTSC/S<ex23>Skip NTSC packages");
             add_line(&tb, "  SKIPNONENGLISH/S<ex23>Skip non-English packages");
-            add_line(&tb, "  QUIET/S<ex23>Suppress UnZip output");
+            add_line(&tb, "  VERBOSE/S<ex23>Show detailed UnZip output (default is quiet)");
             add_line(&tb, "  NOEXTRACT/S<ex23>Disable post-download archive extraction");
             add_line(&tb, "  EXTRACTTO/K<ex23>Extract archives to a separate target path");
             add_line(&tb, "  KEEPARCHIVES/S<ex23>Keep downloaded archives after extraction");
@@ -1583,7 +1583,7 @@ void setup_app_defaults(struct whdload_pack_def WHDLoadPackDefs[], struct downlo
         downloadOptions->download_magazines = 0;
         downloadOptions->download_all = 0;
         downloadOptions->no_skip_messages = 0;
-        downloadOptions->quiet_output = 0;
+        downloadOptions->verbose_output = 0;
         downloadOptions->extract_archives = TRUE;
         downloadOptions->skip_existing_extractions = TRUE;
         downloadOptions->force_extract = FALSE;
@@ -1906,10 +1906,10 @@ int compare_and_decide_DatFileDownload(char *fileName, const char *searchText)
  * @param zipPath Path to the directory containing ZIP files.
  * @param WHDLoadPackDefs Array of pack definitions with filters and flags.
  * @param size_WHDLoadPackDef Number of elements in WHDLoadPackDefs.
- * @param quietMode If set, suppresses unzip output.
+ * @param verboseMode If set, shows full unzip output.
  * @return TRUE if any DAT files were extracted, FALSE otherwise.
  */
-BOOL extract_Zip_file_and_rename(const char *zipPath, struct whdload_pack_def WHDLoadPackDefs[], int size_WHDLoadPackDef, int quietMode)
+BOOL extract_Zip_file_and_rename(const char *zipPath, struct whdload_pack_def WHDLoadPackDefs[], int size_WHDLoadPackDef, int verboseMode)
 {
     struct FileInfoBlock *fib;    /* Pointer to file info structure for directory scanning */
     BOOL found = FALSE;           /* Flag to indicate if any DAT files were extracted */
@@ -1995,14 +1995,14 @@ BOOL extract_Zip_file_and_rename(const char *zipPath, struct whdload_pack_def WH
 
             found = TRUE;
 
-            /* Build the unzip command, with quiet mode if requested */
-            if (quietMode == 1)
+            /* Build the unzip command. Quiet mode is default unless VERBOSE is requested. */
+            if (verboseMode == 1)
             {
-                sprintf(unzipCommand, "unzip -qq -a -p  \"%s/%s\" >\"%s\"", DIR_ZIP_FILES, fileName, datFileName);
+                sprintf(unzipCommand, "unzip -a -p  \"%s/%s\" >\"%s\"", DIR_ZIP_FILES, fileName, datFileName);
             }
             else
             {
-                sprintf(unzipCommand, "unzip -a -p  \"%s/%s\" >\"%s\"", DIR_ZIP_FILES, fileName, datFileName);
+                sprintf(unzipCommand, "unzip -qq -a -p  \"%s/%s\" >\"%s\"", DIR_ZIP_FILES, fileName, datFileName);
             }
 
             /* Set timezone variable for unzip */
@@ -2856,7 +2856,7 @@ LONG execute_archive_download_command(const char *downloadWHDFile,
     create_directory_based_on_filename(WHDLoadPackDefs->extracted_pack_dir, downloadWHDFile);
     sprintf(downloadUrl, "%s%s/%s", WHDLoadPackDefs->download_url, downloadFirstLetter, downloadWHDFile);
 
-    if (download_options != NULL && download_options->quiet_output == TRUE)
+    if (download_options != NULL && download_options->verbose_output == FALSE)
     {
         download_silent = TRUE;
     }
@@ -2887,7 +2887,7 @@ LONG execute_archive_download_command(const char *downloadWHDFile,
                  (long)total_attempts,
                  downloadWHDFile);
 
-        /* Keep archive downloads visible; QUIET currently only suppresses UnZip output. */
+        /* Default runs use reduced output unless VERBOSE is requested. */
         returnCode = (LONG)ad_download_http_file(downloadUrl, fileName, download_silent);
 
         if (returnCode == AD_CANCELLED)
@@ -2941,6 +2941,15 @@ LONG execute_archive_download_command(const char *downloadWHDFile,
 
         if (returnCode == AD_SUCCESS)
         {
+            if (attempt_number > 1)
+            {
+                printf(textReset "Download completed after retry %ld/%ld: %s\n",
+                       (long)(attempt_number - 1),
+                       (long)max_retries,
+                       downloadWHDFile);
+                fflush(stdout);
+            }
+
             delete_download_marker(fileName);
             break;
         }

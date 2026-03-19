@@ -74,7 +74,7 @@ extern const int MAGAZINES;
 extern int files_downloaded;
 extern int files_skipped;
 extern int no_skip_messages;
-extern int quiet_output;
+extern int verbose_output;
 extern int skip_AGA;
 extern int skip_CD;
 extern int skip_NTSC;
@@ -122,7 +122,7 @@ typedef struct download_option {
     int download_games_beta;
     int download_magazines;
     int no_skip_messages;
-    int quiet_output;
+    int verbose_output;
     BOOL extract_archives;
     BOOL skip_existing_extractions;
     BOOL force_extract;
@@ -151,7 +151,7 @@ typedef struct download_progress_state {
 BOOL append_string_to_file(const char *target_filename, const char *append_text, BOOL create_new_file);
 BOOL create_Directory_and_unlock(const char *dirName);
 
-BOOL extract_Zip_file_and_rename(const char *zipPath, whdload_pack_def[], int size_WHDLoadPackDef, int quietMode);
+BOOL extract_Zip_file_and_rename(const char *zipPath, whdload_pack_def[], int size_WHDLoadPackDef, int verboseMode);
 
 BOOL is_file_locked(const char *filePath);
 

@@ -24,7 +24,7 @@ already used for index and DAT ZIP downloads.
 	- Calls `ad_print_download_error(...)`
 	- Logs with `LOG_DOWNLOAD`
 6. Neutral naming follow-up:
-	- `no_wget_output` renamed to `quiet_output` in code (`download_option` + uses).
+	- `no_wget_output` renamed to `verbose_output` in code (`download_option` + uses).
 
 ## Files Touched
 
@@ -41,7 +41,7 @@ already used for index and DAT ZIP downloads.
 ## Behavior Notes
 
 1. Archive downloads no longer require `c:wget`.
-2. `QUIET` now maps to unzip output suppression only.
+2. Default mode is quiet for unzip output; `VERBOSE` enables detailed unzip output.
 3. Archive download progress remains visible (direct downloader called with `silent=FALSE`).
 4. Existing skip behavior is unchanged:
 	- archive-file exists check
@@ -68,8 +68,8 @@ Build completed successfully and produced `Bin/Amiga/WHDDownloader`.
 	- Confirm skip counters increment for existing/extracted titles.
 4. Run `WHDDownloader GAME FORCEDOWNLOAD`:
 	- Confirm downloads happen even when markers exist.
-5. Run `WHDDownloader GAME QUIET`:
-	- Confirm unzip output is quieter.
+5. Run `whdfetch DOWNLOADGAMES VERBOSE`:
+	- Confirm detailed unzip output is shown.
 	- Confirm archive download progress still appears.
 6. Trigger a known failure (bad URL/network down):
 	- Confirm readable direct-download error output.
@@ -80,8 +80,8 @@ Build completed successfully and produced `Bin/Amiga/WHDDownloader`.
 ## Risk/Regression Watch
 
 1. Any scripts or docs expecting wget-specific messaging may now be stale.
-2. `QUIET` semantics changed from wget-oriented wording to unzip-focused behavior.
-3. If later desired, a second patch can make `QUIET` suppress archive download progress too.
+2. `VERBOSE` semantics are unzip-focused behavior.
+3. If later desired, a second patch can expose separate archive-download verbosity control.
 
 ## Quick Rollback Point
 

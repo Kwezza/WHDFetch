@@ -108,6 +108,32 @@ static const char *ad_retry_reason_text(int error_code)
     }
 }
 
+static const char *ad_path_filename(const char *path)
+{
+    const char *filename = path;
+    const char *cursor;
+
+    if (!path || path[0] == '\0')
+    {
+        return "(unknown file)";
+    }
+
+    for (cursor = path; *cursor != '\0'; cursor++)
+    {
+        if (*cursor == '/' || *cursor == '\\' || *cursor == ':')
+        {
+            filename = cursor + 1;
+        }
+    }
+
+    if (filename[0] == '\0')
+    {
+        return "(unknown file)";
+    }
+
+    return filename;
+}
+
 /*------------------------------------------------------------------------*/
 
 /**
@@ -372,6 +398,13 @@ int ad_download_http_file_with_retries(const char *url, const char *output_path,
         result = ad_download_http_file(url, output_path, silent);
         if (result == AD_SUCCESS)
         {
+            if (attempt > 0)
+            {
+                printf("Download completed after retry %ld/%ld: %s\n",
+                       (long)attempt,
+                       (long)max_retries,
+                       ad_path_filename(output_path));
+            }
             return AD_SUCCESS;
         }
 

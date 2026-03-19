@@ -108,6 +108,10 @@ skip_download_if_extracted=true
 ; would otherwise skip them.
 force_download=false
 
+; When true, show detailed unzip output during DAT extraction.
+; Default false keeps DAT extraction output quiet.
+verbose_output=false
+
 ; Default HTTP timeout applied to every download (index.html, DAT ZIPs, and .lha archives).
 ; Accepts values between 5 and 60 seconds. CLI `TIMEOUT=` arguments override this value per run.
 timeout_seconds=30

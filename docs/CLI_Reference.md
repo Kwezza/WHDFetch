@@ -533,18 +533,17 @@ files.
 whdfetch DOWNLOADALL NOSKIPREPORT
 ```
 
-### QUIET
+### VERBOSE
 
-Suppresses verbose output from DAT archive extraction. This makes the console output
-cleaner during the index-download and DAT-extraction phases.
+Shows detailed output from DAT archive extraction.
 
-Archive downloads still show progress information. This option affects only the DAT archive
-extraction output.
+Without this option, DAT extraction runs in quiet mode by default.
+Archive downloads still show progress information.
 
 **Example:**
 
 ```text
-whdfetch DOWNLOADGAMES QUIET
+whdfetch DOWNLOADGAMES VERBOSE
 ```
 
 ### DISABLECOUNTERS
