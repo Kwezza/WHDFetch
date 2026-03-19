@@ -213,16 +213,18 @@ make CONSOLE=1          # with console output (use when debugging)
 make MEMTRACK=1         # with allocation/leak tracking
 make CONSOLE=1 MEMTRACK=1
 make AUTO=0             # omit -lauto (isolates startup crashes)
+make refresh-version    # refresh build/amiga/generated/build_version.h to today's date
+make release            # clean release build with fresh date and stripped symbols
 make clean
 ```
 
 **Requirements:** VBCC cross-compiler + NDK 3.2 + Roadshow SDK on Windows host.
 
-**Build note (cross-platform):** the executable `$VER:` metadata date is generated at
-build time in `DD.MM.YYYY` format via a PowerShell command in `Makefile`
-(`build/amiga/generated/build_version.h`). This works out-of-the-box on Windows.
-If building on Linux/macOS, adjust that Makefile date-generation step to an equivalent
-shell command on your platform.
+**Build note (Windows):** normal `make` builds use the pinned date in
+`build/amiga/generated/build_version.h` (created from `PINNED_BUILD_DATE` in `Makefile`
+if missing). Use `make refresh-version` to update that header date manually.
+`make release` always regenerates the header date in `DD.MM.YYYY` format via PowerShell
+before compiling and links with symbol stripping enabled.
 
 Output binary: `Bin/Amiga/whdfetch`
 
