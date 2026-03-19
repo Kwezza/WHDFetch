@@ -140,6 +140,17 @@ use_custom_icons=true
 ; Set to false if you want copied icons to keep their saved snapshot position.
 unsnapshot_icons=true
 
+; Disable terminal counter features (current and future).
+; When true, WHDDownloader skips pre-count passes and does not print
+; "Download X of Y" style counter lines.
+; CLI equivalent: DISABLECOUNTERS
+disable_counters=false
+
+; Enable CRC verification for downloaded archives when DAT metadata provides CRC.
+; Default is false for fastest downloads.
+; CLI equivalent: CRCCHECK
+crccheck=false
+
 [pack.demos_beta]
 ; Controls whether this pack is active when no specific pack argument is given on the CLI.
 ; true  = this pack will be processed when WHDDownloader is run without a pack argument

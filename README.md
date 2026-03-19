@@ -82,6 +82,8 @@ Games will be downloaded to `GameFiles/Games/` organised into letter sub-folders
 | `NOICONS` | Skip icon replacement after extraction |
 | `NOSKIP` | Print a line for every skipped title |
 | `QUIET` | Suppress unzip output |
+| `DISABLECOUNTERS` | Disable counter features (including pre-count and terminal counter display) |
+| `CRCCHECK` | Enable CRC verification for downloaded archives |
 
 ---
 
@@ -107,6 +109,8 @@ extract_path=                     ; empty = extract in place
 delete_archives_after_extract=true
 use_custom_icons=true
 unsnapshot_icons=true
+disable_counters=false
+crccheck=false
 ```
 
 ### `[filters]`

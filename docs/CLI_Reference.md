@@ -547,6 +547,36 @@ extraction output.
 whdfetch DOWNLOADGAMES QUIET
 ```
 
+### DISABLECOUNTERS
+
+Disables terminal counter features. When enabled, whdfetch skips counter pre-count work and
+suppresses `Download X of Y` style status lines.
+
+This switch is intentionally broad so it can also disable future counter-style telemetry.
+
+Use this on slower systems if you prefer the leanest possible output path.
+
+**Example:**
+
+```text
+whdfetch DOWNLOADALL DISABLECOUNTERS
+```
+
+### CRCCHECK
+
+Enables CRC verification for downloaded archives using CRC values from DAT metadata.
+
+When enabled, the downloader verifies each completed archive and retries on mismatch
+within the configured retry budget.
+
+Default is off.
+
+**Example:**
+
+```text
+whdfetch DOWNLOADGAMES CRCCHECK
+```
+
 ---
 
 ## Icon Options
@@ -637,6 +667,8 @@ In short, CLI pack-selection commands are authoritative whenever at least one is
 | NODOWNLOADSKIP    | `skip_download_if_extracted=false`    | `[global]`          | Advanced override              |
 | FORCEDOWNLOAD     | `force_download=true`                 | `[global]`          | Stronger than `NODOWNLOADSKIP` |
 | NOICONS           | `use_custom_icons=false`              | `[global]`          | Also disables unsnapshotting   |
+| DISABLECOUNTERS   | `disable_counters=true`               | `[global]`          | Disables current and future counters |
+| CRCCHECK          | `crccheck=true`                       | `[global]`          | Enables archive CRC verification |
 | TIMEOUT=<seconds> | `timeout_seconds=<seconds>`           | `[global]`          | Range 5-60 seconds, CLI overrides INI |
 | SKIPAGA           | `skip_aga=true`                       | `[filters]`         | Filter                         |
 | SKIPCD            | `skip_cd=true`                        | `[filters]`         | Filter                         |
@@ -663,6 +695,8 @@ are internal behaviour flags shown for completeness.
 | `delete_archives_after_extract` | `TRUE` (delete after extraction)            |
 | `use_custom_icons`              | `TRUE`                                      |
 | `unsnapshot_icons`              | `TRUE`                                      |
+| `disable_counters`              | `FALSE`                                     |
+| `crccheck`                      | `FALSE`                                     |
 | `skip_aga`                      | `0` (disabled)                              |
 | `skip_cd`                       | `0` (disabled)                              |
 | `skip_ntsc`                     | `0` (disabled)                              |

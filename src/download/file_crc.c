@@ -61,8 +61,9 @@ static void init_crc32_table(void)
  */
 static BOOL open_timer(void)
 {
-    /* Use the shared timer initialization instead */
-    return InitTimer();
+    /* Timer lifecycle is owned by download_lib initialization.
+       CRC verification only borrows the timer when available. */
+    return (TimerBase != NULL) ? TRUE : FALSE;
 }
 
 /**
@@ -70,8 +71,7 @@ static BOOL open_timer(void)
  */
 static void close_timer(void)
 {
-    /* Use the shared timer cleanup instead */
-    CleanupTimer();
+    /* No-op: do not tear down shared timer from CRC verification. */
 }
 
 /**

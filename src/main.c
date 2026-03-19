@@ -142,6 +142,90 @@ static BOOL is_nonfatal_extract_skip(LONG extract_code)
             extract_code == EXTRACT_RESULT_SKIPPED_UNSUPPORTED_ARCHIVE) ? TRUE : FALSE;
 }
 
+static BOOL is_retryable_archive_download_error(LONG error_code)
+{
+    switch (error_code)
+    {
+        case AD_TIMEOUT:
+        case AD_SOCKET_ERROR:
+        case AD_CONNECT_ERROR:
+        case AD_CONNECTION_ERROR:
+            return TRUE;
+        default:
+            return FALSE;
+    }
+}
+
+static const char *download_retry_reason_text(LONG error_code)
+{
+    switch (error_code)
+    {
+        case AD_TIMEOUT:
+            return "timeout";
+        case AD_SOCKET_ERROR:
+            return "socket error";
+        case AD_CONNECT_ERROR:
+            return "connect error";
+        case AD_CONNECTION_ERROR:
+            return "connection closed";
+        case AD_CRC_ERROR:
+            return "CRC mismatch";
+        default:
+            return "download error";
+    }
+}
+
+static const char *download_failure_reason_text(LONG error_code)
+{
+    switch (error_code)
+    {
+        case AD_TIMEOUT:
+            return "timeout";
+        case AD_CANCELLED:
+            return "cancelled";
+        case AD_SOCKET_ERROR:
+            return "socket error";
+        case AD_CONNECT_ERROR:
+            return "connect error";
+        case AD_SEND_ERROR:
+            return "send error";
+        case AD_RECEIVE_ERROR:
+            return "receive error";
+        case AD_CONNECTION_ERROR:
+            return "connection closed";
+        case AD_BAD_REQUEST:
+            return "HTTP 400 bad request";
+        case AD_UNAUTHORIZED:
+            return "HTTP 401 unauthorized";
+        case AD_FORBIDDEN:
+            return "HTTP 403 forbidden";
+        case AD_NOT_FOUND:
+            return "HTTP 404 not found";
+        case AD_SERVER_ERROR:
+            return "HTTP 500 server error";
+        case AD_SERVICE_UNAVAILABLE:
+            return "HTTP 503 service unavailable";
+        case AD_REQUEST_FAILED:
+            return "HTTP request failed";
+        case AD_FILE_ERROR:
+            return "file write error";
+        case AD_CRC_ERROR:
+            return "CRC mismatch";
+        case AD_CRC_FORMAT_ERROR:
+            return "invalid DAT CRC";
+        case AD_MEMORY_ERROR:
+            return "memory error";
+        case AD_NOT_INITIALIZED:
+            return "download library not initialized";
+        case AD_INVALID_URL:
+            return "invalid URL";
+        case AD_HOST_NOT_FOUND:
+            return "host not found";
+        default:
+            return "download error";
+    }
+}
+
 static BOOL confirm_purge_archives(void)
 {
     char response[16] = {0};
@@ -386,10 +470,12 @@ static void log_effective_configuration(const whdload_pack_def *pack_defs,
     }
 
     log_info(LOG_GENERAL,
-             "config[%s]: options no_skip=%ld quiet=%ld extract=%ld extract_only=%ld skip_existing=%ld force_extract=%ld skip_download=%ld force_download=%ld extract_path='%s' delete_archives=%ld purge_archives=%ld skip_aga=%ld skip_cd=%ld skip_ntsc=%ld skip_non_english=%ld use_custom_icons=%ld unsnapshot_icons=%ld\n",
+             "config[%s]: options no_skip=%ld quiet=%ld disable_counters=%ld crc_check=%ld extract=%ld extract_only=%ld skip_existing=%ld force_extract=%ld skip_download=%ld force_download=%ld extract_path='%s' delete_archives=%ld purge_archives=%ld skip_aga=%ld skip_cd=%ld skip_ntsc=%ld skip_non_english=%ld use_custom_icons=%ld unsnapshot_icons=%ld\n",
              stage,
              (long)download_options->no_skip_messages,
              (long)download_options->quiet_output,
+             (long)download_options->disable_counters,
+             (long)download_options->crc_check,
              (long)download_options->extract_archives,
              (long)download_options->extract_existing_only,
              (long)download_options->skip_existing_extractions,
@@ -564,7 +650,7 @@ long start_time;
                  "NOSKIPREPORT/S,SKIPAGA/S,SKIPCD/S,"                                \
                  "SKIPNTSC/S,SKIPNONENGLISH/S,QUIET/S,NOEXTRACT/S,"                  \
                  "EXTRACTTO/K,KEEPARCHIVES/S,DELETEARCHIVES/S,PURGEARCHIVES/S,EXTRACTONLY/S,FORCEEXTRACT/S," \
-                 "NODOWNLOADSKIP/S,FORCEDOWNLOAD/S,NOICONS/S"
+                 "NODOWNLOADSKIP/S,FORCEDOWNLOAD/S,NOICONS/S,DISABLECOUNTERS/S,CRCCHECK/S"
 
 #define textBlack "\x1B[31m"
 #define textBlue "\x1B[33m"
@@ -587,6 +673,239 @@ const char *DIR_GAME_DOWNLOADS = "GameFiles";
 const char *DIR_HOLDING = "temp/holding";
 const char *DIR_TEMP = "temp";
 const char *DIR_ZIP_FILES = "temp/Zip files";
+
+static BOOL build_pack_text_list_path(const struct whdload_pack_def *pack_def,
+                                      char *out_path,
+                                      size_t out_path_size)
+{
+    char *matched_name;
+
+    if (pack_def == NULL || out_path == NULL || out_path_size == 0)
+    {
+        return FALSE;
+    }
+
+    matched_name = get_first_matching_fileName(pack_def->filter_dat_files);
+    if (matched_name == NULL)
+    {
+        return FALSE;
+    }
+
+    if (snprintf(out_path, out_path_size, "%s/%s", DIR_DAT_FILES, matched_name) >= (int)out_path_size)
+    {
+        amiga_free(matched_name);
+        return FALSE;
+    }
+
+    sanitize_amiga_file_path(out_path);
+    amiga_free(matched_name);
+
+    return does_file_or_folder_exist(out_path, 0) ? TRUE : FALSE;
+}
+
+static LONG count_total_queued_entries_for_selected_packs(struct whdload_pack_def whdload_pack_defs[],
+                                                          int num_packs)
+{
+    LONG total_entries = 0;
+    int i;
+
+    for (i = 0; i < num_packs; i++)
+    {
+        char list_path[256] = {0};
+        LONG list_count;
+
+        if (whdload_pack_defs[i].user_requested_download != 1)
+        {
+            continue;
+        }
+
+        if (!build_pack_text_list_path(&whdload_pack_defs[i], list_path, sizeof(list_path)))
+        {
+            log_warning(LOG_GENERAL,
+                        "download: unable to pre-count entries for pack '%s' (list not found)\n",
+                        whdload_pack_defs[i].full_text_name_of_pack);
+            continue;
+        }
+
+        list_count = CountLines(list_path);
+        if (list_count < 0)
+        {
+            log_warning(LOG_GENERAL,
+                        "download: failed pre-count for '%s' (path='%s')\n",
+                        whdload_pack_defs[i].full_text_name_of_pack,
+                        list_path);
+            continue;
+        }
+
+        total_entries += list_count;
+    }
+
+    return total_entries;
+}
+
+static void parse_dat_list_entry(char *line,
+                                 char **out_name,
+                                 ULONG *out_size_bytes,
+                                 char **out_crc)
+{
+    char *name_token;
+    char *size_token;
+    char *crc_token;
+
+    if (out_name != NULL)
+    {
+        *out_name = NULL;
+    }
+    if (out_size_bytes != NULL)
+    {
+        *out_size_bytes = 0;
+    }
+    if (out_crc != NULL)
+    {
+        *out_crc = NULL;
+    }
+
+    if (line == NULL)
+    {
+        return;
+    }
+
+    name_token = strtok(line, "\t");
+    size_token = strtok(NULL, "\t");
+    crc_token = strtok(NULL, "\t");
+
+    if (name_token != NULL)
+    {
+        trim(name_token);
+        if (out_name != NULL)
+        {
+            *out_name = name_token;
+        }
+    }
+
+    if (size_token != NULL && out_size_bytes != NULL)
+    {
+        char *end_ptr = NULL;
+        ULONG parsed_size = 0;
+        trim(size_token);
+
+        if (size_token[0] != '\0')
+        {
+            parsed_size = (ULONG)strtoul(size_token, &end_ptr, 10);
+            if (end_ptr != NULL && *end_ptr == '\0')
+            {
+                *out_size_bytes = parsed_size;
+            }
+        }
+    }
+
+    if (crc_token != NULL)
+    {
+        trim(crc_token);
+        if (out_crc != NULL)
+        {
+            *out_crc = crc_token;
+        }
+    }
+}
+
+static ULONG archive_size_bytes_to_kb(ULONG size_bytes)
+{
+    if (size_bytes == 0)
+    {
+        return 0;
+    }
+
+    return (size_bytes + 1023UL) / 1024UL;
+}
+
+static ULONG sum_queued_bytes_from_list_file(const char *list_path)
+{
+    FILE *file_ptr;
+    char buffer[1024] = {0};
+    ULONG total_kb = 0;
+
+    if (list_path == NULL)
+    {
+        return 0;
+    }
+
+    file_ptr = fopen(list_path, "r");
+    if (file_ptr == NULL)
+    {
+        return 0;
+    }
+
+    while (fgets(buffer, sizeof(buffer), file_ptr) != NULL)
+    {
+        char parse_buffer[1024] = {0};
+        char *archive_name = NULL;
+        char *archive_crc = NULL;
+        ULONG archive_size_bytes = 0;
+
+        strncpy(parse_buffer, buffer, sizeof(parse_buffer) - 1);
+        parse_buffer[sizeof(parse_buffer) - 1] = '\0';
+        trim(parse_buffer);
+        if (parse_buffer[0] == '\0')
+        {
+            continue;
+        }
+
+        parse_dat_list_entry(parse_buffer, &archive_name, &archive_size_bytes, &archive_crc);
+        if (archive_name != NULL && archive_size_bytes > 0)
+        {
+            ULONG archive_size_kb = archive_size_bytes_to_kb(archive_size_bytes);
+
+            if ((ULONG)(0xFFFFFFFFUL - total_kb) < archive_size_kb)
+            {
+                total_kb = 0xFFFFFFFFUL;
+            }
+            else
+            {
+                total_kb += archive_size_kb;
+            }
+        }
+    }
+
+    fclose(file_ptr);
+    return total_kb;
+}
+
+static ULONG sum_total_queued_kb_for_selected_packs(struct whdload_pack_def whdload_pack_defs[],
+                                                       int num_packs)
+{
+    ULONG total_kb = 0;
+    int i;
+
+    for (i = 0; i < num_packs; i++)
+    {
+        char list_path[256] = {0};
+
+        if (whdload_pack_defs[i].user_requested_download != 1)
+        {
+            continue;
+        }
+
+        if (!build_pack_text_list_path(&whdload_pack_defs[i], list_path, sizeof(list_path)))
+        {
+            continue;
+        }
+
+        {
+            ULONG pack_kb = sum_queued_bytes_from_list_file(list_path);
+            if ((ULONG)(0xFFFFFFFFUL - total_kb) < pack_kb)
+            {
+                total_kb = 0xFFFFFFFFUL;
+            }
+            else
+            {
+                total_kb += pack_kb;
+            }
+        }
+    }
+
+    return total_kb;
+}
 
 /**
  * @brief Main entry point for the Retroplay WHD Downloader application
@@ -616,6 +935,8 @@ int main(int argc, char *argv[])
     int download_result;          /* Result of download operations */
     int requested_pack_count = 0; /* Number of packs selected by CLI/defaults */
     int has_cli_pack_selection = 0;
+    download_progress_state progress_state = {0};
+    download_progress_state *active_progress_state = NULL;
     char temp_string[1024];       /* Buffer for building command strings */    
     /* Initialize application defaults and structures */
     setup_app_defaults(whdload_pack_defs, &download_options);
@@ -814,6 +1135,16 @@ int main(int argc, char *argv[])
             download_options.use_custom_icons = FALSE;
         }
 
+        if (strncasecmp_custom(argv[i], "DISABLECOUNTERS", strlen(argv[i])) == 0)
+        {
+            download_options.disable_counters = TRUE;
+        }
+
+        if (strncasecmp_custom(argv[i], "CRCCHECK", strlen(argv[i])) == 0)
+        {
+            download_options.crc_check = TRUE;
+        }
+
         if (strncasecmp_custom(argv[i], "TIMEOUT=", 8) == 0)
         {
             apply_timeout_argument(&download_options, argv[i] + 8);
@@ -913,6 +1244,17 @@ int main(int argc, char *argv[])
         g_download_lib_initialized = TRUE;
         log_info(LOG_GENERAL, "main: download library initialized\n");
 
+    if (download_options.crc_check == TRUE)
+    {
+        printf(textReset textBold "CRC verification:" textReset " ON\n");
+        log_info(LOG_GENERAL, "main: CRC verification enabled (CRCCHECK)\n");
+    }
+    else
+    {
+        printf(textReset textBold "CRC verification:" textReset " OFF (use CRCCHECK to enable)\n");
+        log_info(LOG_GENERAL, "main: CRC verification disabled (default)\n");
+    }
+
     /* Download the Retroplay index page */
     printf(textReset textBold "\nGetting latest Retroplay web page from the TURRAN website site...\n" textReset);
 
@@ -989,13 +1331,47 @@ int main(int argc, char *argv[])
     }
 
     /* Process each requested pack for downloading */
+    if (download_options.disable_counters == FALSE)
+    {
+        progress_state.total_queued_entries = count_total_queued_entries_for_selected_packs(whdload_pack_defs, 5);
+        progress_state.current_download_index = 0;
+        progress_state.total_queued_kb = sum_total_queued_kb_for_selected_packs(whdload_pack_defs, 5);
+        progress_state.remaining_queued_kb = progress_state.total_queued_kb;
+        active_progress_state = &progress_state;
+
+        if (progress_state.total_queued_entries > 0)
+        {
+            printf(textReset textBold "Total queued archives to process:" textReset " %ld",
+                   (long)progress_state.total_queued_entries);
+
+            if (progress_state.total_queued_kb > 0)
+            {
+                ULONG total_mb_whole = progress_state.total_queued_kb / 1024UL;
+                ULONG total_mb_tenths = ((progress_state.total_queued_kb % 1024UL) * 10UL) / 1024UL;
+
+              printf(textReset textBold " (%ld.%ld MB)" textReset,
+                  (long)total_mb_whole,
+                  (long)total_mb_tenths);
+            }
+
+            printf("\n");
+        }
+    }
+    else
+    {
+        log_info(LOG_GENERAL, "download: counters disabled by configuration\n");
+    }
+
     for (i = 0; i < 5; i++)
     {
         if (whdload_pack_defs[i].user_requested_download == 1)
         {
             printf("\n" textReset textBold "Downloading %s..." textReset "\n", 
                    whdload_pack_defs[i].full_text_name_of_pack);
-            response_code = download_roms_if_file_exists(&whdload_pack_defs[i], &download_options, replace_files);
+            response_code = download_roms_if_file_exists(&whdload_pack_defs[i],
+                                                         &download_options,
+                                                         replace_files,
+                                                         active_progress_state);
             if (response_code == 20)
             {
                 break;
@@ -1150,6 +1526,8 @@ BOOL startup_text_and_needed_progs_are_installed(int number_of_args)
             add_line(&tb, "  FORCEEXTRACT/S<ex23>Always extract even when ArchiveName.txt matches");
             add_line(&tb, "  NODOWNLOADSKIP/S<ex23>Disable marker-based pre-download skip");
             add_line(&tb, "  FORCEDOWNLOAD/S<ex23>Always download even when extracted marker matches");
+            add_line(&tb, "  DISABLECOUNTERS/S<ex23>Disable queued counters and pre-count pass");
+            add_line(&tb, "  CRCCHECK/S<ex23>Enable CRC verification for downloaded archives");
 
             add_line(&tb, "");
             add_line(&tb, "<b>Examples:</b>");
@@ -1217,6 +1595,8 @@ void setup_app_defaults(struct whdload_pack_def WHDLoadPackDefs[], struct downlo
         downloadOptions->extract_existing_only = 0;
         downloadOptions->use_custom_icons = TRUE;
         downloadOptions->unsnapshot_icons = TRUE;
+        downloadOptions->disable_counters = FALSE;
+        downloadOptions->crc_check = FALSE;
         downloadOptions->timeout_seconds = 30;
     }
 
@@ -1792,6 +2172,51 @@ int should_include_game(const game_metadata *game)
     return 1;
 }
 
+static BOOL extract_xml_attribute_value(const char *source,
+                                        const char *attribute_name,
+                                        char *out_value,
+                                        size_t out_value_size)
+{
+    char pattern[32] = {0};
+    const char *value_start;
+    const char *value_end;
+    size_t value_length;
+
+    if (source == NULL || attribute_name == NULL || out_value == NULL || out_value_size == 0)
+    {
+        return FALSE;
+    }
+
+    if (snprintf(pattern, sizeof(pattern), "%s=\"", attribute_name) >= (int)sizeof(pattern))
+    {
+        return FALSE;
+    }
+
+    value_start = strstr(source, pattern);
+    if (value_start == NULL)
+    {
+        return FALSE;
+    }
+
+    value_start += strlen(pattern);
+    value_end = strchr(value_start, '"');
+    if (value_end == NULL)
+    {
+        return FALSE;
+    }
+
+    value_length = (size_t)(value_end - value_start);
+    if (value_length >= out_value_size)
+    {
+        value_length = out_value_size - 1;
+    }
+
+    strncpy(out_value, value_start, value_length);
+    out_value[value_length] = '\0';
+
+    return TRUE;
+}
+
 /**
  * @brief Extracts ROM names from an XML file and saves them to a text file.
  *
@@ -1821,6 +2246,8 @@ int extract_and_save_rom_names_from_XML(char *input_file_path, char *output_file
     time_t last_update_time = 0;  /* Time of last progress update */
     time_t current_time;          /* Current time for progress updates */
     char percent_str[32];         /* Buffer for percentage string */
+    char size_value[32];          /* Extracted size attribute */
+    char crc_value[64];           /* Extracted crc attribute */
 
     /* Remove any existing output file */
     DeleteFile(output_file_path);
@@ -1882,8 +2309,28 @@ int extract_and_save_rom_names_from_XML(char *input_file_path, char *output_file
                     /* Check if the game should be included based on filters */
                     if (should_include_game(&game))
                     {
-                        /* Write the name to the output file */
-                        fprintf(output_file, "%s\n", name_value);
+                        BOOL has_size;
+                        BOOL has_crc;
+
+                        size_value[0] = '\0';
+                        crc_value[0] = '\0';
+                        has_size = extract_xml_attribute_value(rom_start, "size", size_value, sizeof(size_value));
+                        has_crc = extract_xml_attribute_value(rom_start, "crc", crc_value, sizeof(crc_value));
+
+                        /* Write name and optional metadata as TSV: name\tsize\tcrc */
+                        if (has_size || has_crc)
+                        {
+                            fprintf(output_file,
+                                    "%s\t%s\t%s\n",
+                                    name_value,
+                                    has_size ? size_value : "",
+                                    has_crc ? crc_value : "");
+                        }
+                        else
+                        {
+                            fprintf(output_file, "%s\n", name_value);
+                        }
+
                         file_count++;
                     }
                 }
@@ -1963,7 +2410,8 @@ char *get_first_matching_fileName(const char *fileNameToFind)
 
 long download_roms_if_file_exists(struct whdload_pack_def *WHDLoadPackDefs,
                                   const struct download_option *download_options,
-                                  int replaceFiles)
+                                  int replaceFiles,
+                                  download_progress_state *progress_state)
 {
     char foundFilename[256] = {0};
     char *fileNameToRead = get_first_matching_fileName(WHDLoadPackDefs->filter_dat_files);
@@ -1983,7 +2431,11 @@ long download_roms_if_file_exists(struct whdload_pack_def *WHDLoadPackDefs,
 
     if (does_file_or_folder_exist(foundFilename, 0))
     {
-        returnCode = download_roms_from_file(foundFilename, WHDLoadPackDefs, download_options, replaceFiles);
+        returnCode = download_roms_from_file(foundFilename,
+                                             WHDLoadPackDefs,
+                                             download_options,
+                                             replaceFiles,
+                                             progress_state);
     }
     else
     {
@@ -2034,9 +2486,13 @@ LONG extract_existing_archives_from_file(const char *filename,
                                          const struct download_option *download_options)
 {
     FILE *filePtr;
-    char buffer[256] = {0};
+    char buffer[1024] = {0};
+    char parse_buffer[1024] = {0};
     char archivePath[512] = {0};
     char firstLetter[2] = {0};
+    char *archive_name = NULL;
+    char *archive_crc = NULL;
+    ULONG archive_size_bytes = 0;
     int len = 0;
     LONG extractCode = 0;
     LONG extractedCount = 0;
@@ -2065,7 +2521,15 @@ LONG extract_existing_archives_from_file(const char *filename,
             continue;
         }
 
-        firstLetter[0] = buffer[0];
+        strncpy(parse_buffer, buffer, sizeof(parse_buffer) - 1);
+        parse_buffer[sizeof(parse_buffer) - 1] = '\0';
+        parse_dat_list_entry(parse_buffer, &archive_name, &archive_size_bytes, &archive_crc);
+        if (archive_name == NULL || archive_name[0] == '\0')
+        {
+            continue;
+        }
+
+        firstLetter[0] = archive_name[0];
         firstLetter[1] = '\0';
         get_folder_name_from_character(firstLetter);
 
@@ -2074,7 +2538,7 @@ LONG extract_existing_archives_from_file(const char *filename,
                 DIR_GAME_DOWNLOADS,
                 WHDLoadPackDefs->extracted_pack_dir,
                 firstLetter,
-                buffer);
+                archive_name);
         sanitize_amiga_file_path(archivePath);
 
         if (!does_file_or_folder_exist(archivePath, 1))
@@ -2084,7 +2548,7 @@ LONG extract_existing_archives_from_file(const char *filename,
         }
 
         extractCode = extract_process_downloaded_archive(archivePath,
-                                                         buffer,
+                                                         archive_name,
                                                          WHDLoadPackDefs->extracted_pack_dir,
                                                          firstLetter,
                                                          WHDLoadPackDefs->full_text_name_of_pack,
@@ -2105,7 +2569,7 @@ LONG extract_existing_archives_from_file(const char *filename,
 
             if (skip_reason != NULL)
             {
-                report_add_extraction_skip(buffer,
+                report_add_extraction_skip(archive_name,
                                            WHDLoadPackDefs->full_text_name_of_pack,
                                            skip_reason);
             }
@@ -2137,10 +2601,15 @@ LONG extract_existing_archives_from_file(const char *filename,
 long download_roms_from_file(const char *filename,
                              struct whdload_pack_def *WHDLoadPackDefs,
                              const struct download_option *download_options,
-                             int replaceFiles)
+                             int replaceFiles,
+                             download_progress_state *progress_state)
 {
     FILE *filePtr;
-    char buffer[256] = {0};
+    char buffer[1024] = {0};
+    char parse_buffer[1024] = {0};
+    char *archive_name = NULL;
+    char *archive_crc = NULL;
+    ULONG archive_size_bytes = 0;
     int len = 0;
     filePtr = fopen(filename, "r");
     if (filePtr == NULL)
@@ -2156,8 +2625,29 @@ long download_roms_from_file(const char *filename,
         while (len > 0 && (buffer[len - 1] == '\r' || buffer[len - 1] == '\n'))
         {                           /* Check if the last character is a carriage return */
             buffer[len - 1] = '\0'; /* Replace it with a null terminator */
+            len--;
         }
-        if (execute_archive_download_command(buffer, WHDLoadPackDefs, download_options, replaceFiles) == 20)
+
+        if (buffer[0] == '\0')
+        {
+            continue;
+        }
+
+        strncpy(parse_buffer, buffer, sizeof(parse_buffer) - 1);
+        parse_buffer[sizeof(parse_buffer) - 1] = '\0';
+        parse_dat_list_entry(parse_buffer, &archive_name, &archive_size_bytes, &archive_crc);
+        if (archive_name == NULL || archive_name[0] == '\0')
+        {
+            continue;
+        }
+
+        if (execute_archive_download_command(archive_name,
+                                             archive_size_bytes,
+                                             archive_crc,
+                                             WHDLoadPackDefs,
+                                             download_options,
+                                             replaceFiles,
+                                             progress_state) == 20)
         {
             printf(textReset "User cancelled download or error\n");
             fclose(filePtr);
@@ -2174,9 +2664,12 @@ long download_roms_from_file(const char *filename,
 }
 
 LONG execute_archive_download_command(const char *downloadWHDFile,
+                                      ULONG archive_size_bytes,
+                                      const char *archive_crc,
                                       struct whdload_pack_def *WHDLoadPackDefs,
                                       const struct download_option *download_options,
-                                      int replaceFiles)
+                                      int replaceFiles,
+                                      download_progress_state *progress_state)
 {
     char fileName[256] = {0};
     char downloadUrl[256] = {0};
@@ -2187,10 +2680,27 @@ LONG execute_archive_download_command(const char *downloadWHDFile,
     BOOL download_silent = FALSE;
     LONG extractCode;
     LONG returnCode;
+    LONG current_download_number = 0;
+    ULONG remaining_mb_whole = 0;
+    ULONG remaining_mb_tenths = 0;
+    ULONG archive_size_kb = archive_size_bytes_to_kb(archive_size_bytes);
+    ULONG max_retries = 0;
+    ULONG total_attempts = 1;
+    ULONG attempt_number = 0;
+    ULONG backoff_seconds = 1;
 
     if (replaceFiles != 0)
     {
         log_debug(LOG_DOWNLOAD, "download: replaceFiles flag is set but currently unused\n");
+    }
+
+    if (archive_crc != NULL && archive_crc[0] != '\0')
+    {
+        log_debug(LOG_DOWNLOAD,
+                  "download: metadata for '%s' size=%ld crc=%s\n",
+                  downloadWHDFile,
+                  (long)archive_size_bytes,
+                  archive_crc);
     }
 
     sprintf(downloadFirstLetter, "%c", downloadWHDFile[0]);
@@ -2260,6 +2770,18 @@ LONG execute_archive_download_command(const char *downloadWHDFile,
         files_skipped = files_skipped + 1;
         WHDLoadPackDefs->count_existing_files_skipped = WHDLoadPackDefs->count_existing_files_skipped + 1;
 
+        if (progress_state != NULL && archive_size_kb > 0)
+        {
+            if (progress_state->remaining_queued_kb >= archive_size_kb)
+            {
+                progress_state->remaining_queued_kb -= archive_size_kb;
+            }
+            else
+            {
+                progress_state->remaining_queued_kb = 0;
+            }
+        }
+
         return 2;
     }
 
@@ -2284,12 +2806,52 @@ LONG execute_archive_download_command(const char *downloadWHDFile,
 
         files_skipped = files_skipped + 1;
         WHDLoadPackDefs->count_existing_files_skipped = WHDLoadPackDefs->count_existing_files_skipped + 1;
+
+        if (progress_state != NULL && archive_size_kb > 0)
+        {
+            if (progress_state->remaining_queued_kb >= archive_size_kb)
+            {
+                progress_state->remaining_queued_kb -= archive_size_kb;
+            }
+            else
+            {
+                progress_state->remaining_queued_kb = 0;
+            }
+        }
+
         return 2;
+    }
+
+    if (progress_state != NULL)
+    {
+        ULONG remaining_kb = progress_state->remaining_queued_kb;
+
+        progress_state->current_download_index = progress_state->current_download_index + 1;
+        current_download_number = progress_state->current_download_index;
+
+        remaining_mb_whole = remaining_kb / 1024UL;
+        remaining_mb_tenths = ((remaining_kb % 1024UL) * 10UL) / 1024UL;
     }
 
     Format_text_split_by_Caps(downloadWHDFile, formattedFileName, sizeof(formattedFileName));
     turn_filename_into_text_with_spaces(downloadWHDFile, formattedFileNameP2);
-    printf("\n" textReset textBold "Downloading %s " textReset "(%s) (Ctrl-c to cancel)" textBlue ".\n\n", formattedFileName, formattedFileNameP2);
+
+    if (progress_state != NULL && progress_state->total_queued_entries > 0)
+    {
+           printf("\n" textReset textBold "Download %ld of %ld (%ld.%ld MB left)\n" textReset textBold "Fetching %s " textReset "(%s) (Ctrl-c to cancel)" textBlue ".\n\n",
+               (long)current_download_number,
+               (long)progress_state->total_queued_entries,
+               (long)remaining_mb_whole,
+               (long)remaining_mb_tenths,
+               formattedFileName,
+               formattedFileNameP2);
+    }
+    else
+    {
+        printf("\n" textReset textBold "Fetching %s " textReset "(%s) (Ctrl-c to cancel)" textBlue ".\n\n",
+               formattedFileName,
+               formattedFileNameP2);
+    }
 
     create_directory_based_on_filename(WHDLoadPackDefs->extracted_pack_dir, downloadWHDFile);
     sprintf(downloadUrl, "%s%s/%s", WHDLoadPackDefs->download_url, downloadFirstLetter, downloadWHDFile);
@@ -2299,41 +2861,176 @@ LONG execute_archive_download_command(const char *downloadWHDFile,
         download_silent = TRUE;
     }
 
-    /* Drop a marker so interrupted downloads are detected on next run */
-    create_download_marker(fileName);
-
-    /* Keep archive downloads visible; QUIET currently only suppresses UnZip output. */
-    returnCode = (LONG)ad_download_http_file_with_retries(downloadUrl, fileName, download_silent);
-
-    if (returnCode == AD_CANCELLED)
+    if (!ad_get_config_value(ADTAG_MaxRetries, &max_retries))
     {
-        log_info(LOG_DOWNLOAD, "download: user cancelled '%s' via Ctrl-C\n", downloadWHDFile);
-        /* Leave partial file + marker on disk; next run will clean up */
-        return 20;
+        max_retries = 2;
+        log_warning(LOG_DOWNLOAD,
+                    "download: failed to read ADTAG_MaxRetries, using fallback retries=%ld for '%s'\n",
+                    (long)max_retries,
+                    downloadWHDFile);
     }
 
-    if (returnCode != 0)
+    total_attempts = max_retries + 1;
+    returnCode = AD_ERROR;
+
+    for (attempt_number = 1; attempt_number <= total_attempts; attempt_number++)
     {
+        BOOL retry_due_to_error = FALSE;
+        BOOL retry_due_to_crc = FALSE;
+
+        /* Drop a marker so interrupted downloads are detected on next run */
+        create_download_marker(fileName);
+
+        log_info(LOG_DOWNLOAD,
+                 "download: attempt %ld/%ld for '%s'\n",
+                 (long)attempt_number,
+                 (long)total_attempts,
+                 downloadWHDFile);
+
+        /* Keep archive downloads visible; QUIET currently only suppresses UnZip output. */
+        returnCode = (LONG)ad_download_http_file(downloadUrl, fileName, download_silent);
+
+        if (returnCode == AD_CANCELLED)
+        {
+            log_info(LOG_DOWNLOAD, "download: user cancelled '%s' via Ctrl-C\n", downloadWHDFile);
+            /* Leave partial file + marker on disk; next run will clean up */
+            return 20;
+        }
+
+        if (returnCode == AD_SUCCESS &&
+            download_options != NULL &&
+            download_options->crc_check == TRUE &&
+            archive_crc != NULL && archive_crc[0] != '\0')
+        {
+            LONG crc_result = (LONG)ad_verify_file_crc(fileName, archive_crc);
+            if (crc_result != AD_SUCCESS)
+            {
+                returnCode = crc_result;
+                if (attempt_number < total_attempts)
+                {
+                    printf(textReset "CRC failed: %s (expected %s) - retrying.\n",
+                           downloadWHDFile,
+                           archive_crc);
+                }
+                else
+                {
+                    printf(textReset "CRC failed: %s (expected %s) - no retries left.\n",
+                           downloadWHDFile,
+                           archive_crc);
+                }
+                fflush(stdout);
+                log_warning(LOG_DOWNLOAD,
+                            "download: CRC verification failed for '%s' on attempt %ld/%ld (expected=%s, code=%ld)\n",
+                            downloadWHDFile,
+                            (long)attempt_number,
+                            (long)total_attempts,
+                            archive_crc,
+                            (long)returnCode);
+            }
+            else
+            {
+                printf(textReset "CRC OK: %s\n", downloadWHDFile);
+                fflush(stdout);
+                log_info(LOG_DOWNLOAD,
+                         "download: CRC verified for '%s' on attempt %ld/%ld\n",
+                         downloadWHDFile,
+                         (long)attempt_number,
+                         (long)total_attempts);
+            }
+        }
+
+        if (returnCode == AD_SUCCESS)
+        {
+            delete_download_marker(fileName);
+            break;
+        }
+
         ad_print_download_error((int)returnCode);
         log_error(LOG_DOWNLOAD,
-                  "download: direct HTTP download failed for '%s' (code=%ld)\n",
+                  "download: attempt %ld/%ld failed for '%s' (code=%ld)\n",
+                  (long)attempt_number,
+                  (long)total_attempts,
                   downloadWHDFile,
                   (long)returnCode);
 
-        /* For non-retryable server errors, clean up marker + partial file
-           so we don't futilely retry on every subsequent run. */
-        if (returnCode == AD_BAD_REQUEST || returnCode == AD_UNAUTHORIZED ||
-            returnCode == AD_FORBIDDEN || returnCode == AD_NOT_FOUND)
+        retry_due_to_error = is_retryable_archive_download_error(returnCode);
+        retry_due_to_crc = (returnCode == AD_CRC_ERROR);
+
+        if ((retry_due_to_error || retry_due_to_crc) && attempt_number < total_attempts)
         {
             DeleteFile((STRPTR)fileName);
             delete_download_marker(fileName);
+
+            printf("Retry %ld/%ld after %s in %ld second%s...\n",
+                   (long)attempt_number,
+                   (long)max_retries,
+                   download_retry_reason_text(returnCode),
+                   (long)backoff_seconds,
+                   (backoff_seconds == 1) ? "" : "s");
+
+            log_info(LOG_DOWNLOAD,
+                     "download: retrying '%s' after %s (retry %ld/%ld, delay=%lds)\n",
+                     downloadWHDFile,
+                     download_retry_reason_text(returnCode),
+                     (long)attempt_number,
+                     (long)max_retries,
+                     (long)backoff_seconds);
+
+            Delay(backoff_seconds * 50); /* Amiga DOS ticks are 1/50 sec */
+
+            if (backoff_seconds < 8)
+            {
+                backoff_seconds <<= 1;
+            }
+
+            continue;
+        }
+
+        DeleteFile((STRPTR)fileName);
+        delete_download_marker(fileName);
+
+        report_add_download_failure(downloadWHDFile,
+                                    WHDLoadPackDefs->full_text_name_of_pack,
+                                    download_failure_reason_text(returnCode));
+
+        if (progress_state != NULL && archive_size_kb > 0)
+        {
+            if (progress_state->remaining_queued_kb >= archive_size_kb)
+            {
+                progress_state->remaining_queued_kb -= archive_size_kb;
+            }
+            else
+            {
+                progress_state->remaining_queued_kb = 0;
+            }
         }
 
         return returnCode;
     }
 
-    /* Download succeeded — remove the .downloading marker */
-    delete_download_marker(fileName);
+    if (returnCode != AD_SUCCESS)
+    {
+        DeleteFile((STRPTR)fileName);
+        delete_download_marker(fileName);
+
+        report_add_download_failure(downloadWHDFile,
+                                    WHDLoadPackDefs->full_text_name_of_pack,
+                                    download_failure_reason_text(returnCode));
+
+        if (progress_state != NULL && archive_size_kb > 0)
+        {
+            if (progress_state->remaining_queued_kb >= archive_size_kb)
+            {
+                progress_state->remaining_queued_kb -= archive_size_kb;
+            }
+            else
+            {
+                progress_state->remaining_queued_kb = 0;
+            }
+        }
+
+        return returnCode;
+    }
 
     files_downloaded = files_downloaded + 1;
     WHDLoadPackDefs->count_new_files_downloaded = WHDLoadPackDefs->count_new_files_downloaded + 1;
@@ -2380,6 +3077,18 @@ LONG execute_archive_download_command(const char *downloadWHDFile,
                         "extract: post-download extraction failed for '%s' (code=%ld), continuing\n",
                         downloadWHDFile,
                         (long)extractCode);
+        }
+    }
+
+    if (progress_state != NULL && archive_size_kb > 0)
+    {
+        if (progress_state->remaining_queued_kb >= archive_size_kb)
+        {
+            progress_state->remaining_queued_kb -= archive_size_kb;
+        }
+        else
+        {
+            progress_state->remaining_queued_kb = 0;
         }
     }
 

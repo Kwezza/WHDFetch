@@ -23,6 +23,15 @@ This document summarizes the features implemented during this chat session.
 - Added explicit runtime log line when local archive cache is reused.
 - Fixed `FORCEDOWNLOAD` behavior so it bypasses local-archive short-circuit and truly forces HTTP fetch.
 - Added extraction-skip reporting in session updates (including clear UnLZX install guidance when `.lzx` extraction is skipped).
+- Added queued download counters with global pre-count and per-download `Download X of Y` status.
+- Added queued size tracking from DAT metadata and `MB left` display.
+- Added `DISABLECOUNTERS` CLI/INI switch to disable current and future counter-style output.
+- Added DAT list metadata persistence in TSV form (`name<TAB>size<TAB>crc`) with backward compatibility for legacy name-only lines.
+- Added unified retry handling for network and CRC mismatch failures under one attempt budget.
+- Added download-failure reporting section in updates reports (with per-pack and total failure counts).
+- Added explicit CRC status output during archive processing (`CRC OK` / `CRC failed`) regardless of `QUIET` mode.
+- Added `CRCCHECK` CLI and INI setting (`crccheck` / `crc_check`) to enable CRC verification (default OFF).
+- Added startup console status line showing CRC mode (`ON` or `OFF`) to surface feature availability.
 
 ## New Runtime Behavior
 
@@ -229,6 +238,11 @@ Icon control:
 
 - `NOICONS` disables custom icon lookup and always uses the system default drawer icon.
 
+Counter and integrity control:
+
+- `DISABLECOUNTERS` disables queued pre-count and counter display output.
+- `CRCCHECK` enables CRC verification for downloaded archives when DAT CRC metadata is available.
+
 ## Drawer Icons for Extracted Folders
 
 After each directory in the extraction hierarchy is created (base, pack, and letter folders), a
@@ -307,6 +321,8 @@ When disabled, the system default drawer icon is always used for structural fold
 - `delete_archives_after_extract=true|false`
 - `use_custom_icons=true|false`
 - `unsnapshot_icons=true|false`
+- `disable_counters=true|false`
+- `crccheck=true|false` (alias: `crc_check=true|false`)
 
 ## Default Settings
 
@@ -319,6 +335,8 @@ When disabled, the system default drawer icon is always used for structural fold
 - `extract_path = (empty / in-place)`
 - `use_custom_icons = true`
 - `unsnapshot_icons = true`
+- `disable_counters = false`
+- `crccheck = false`
 
 ## Skip Logic Details
 

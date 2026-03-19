@@ -304,6 +304,31 @@ static void apply_global_key_value(const char *key, const char *value, download_
         return;
     }
 
+    if (stricmp_custom(key, "disable_counters") == 0)
+    {
+        if (!parse_boolean_value(value, &bool_value))
+        {
+            log_warning(LOG_GENERAL, "ini: invalid boolean value '%s' ignored\n", value);
+            return;
+        }
+
+        download_opts->disable_counters = bool_value ? TRUE : FALSE;
+        return;
+    }
+
+    if (stricmp_custom(key, "crccheck") == 0 ||
+        stricmp_custom(key, "crc_check") == 0)
+    {
+        if (!parse_boolean_value(value, &bool_value))
+        {
+            log_warning(LOG_GENERAL, "ini: invalid boolean value '%s' ignored\n", value);
+            return;
+        }
+
+        download_opts->crc_check = bool_value ? TRUE : FALSE;
+        return;
+    }
+
     log_debug(LOG_GENERAL, "ini: unknown [global] key '%s' ignored\n", key);
 }
 

@@ -134,8 +134,17 @@ typedef struct download_option {
     int extract_existing_only;
     BOOL use_custom_icons;
     BOOL unsnapshot_icons;
+    BOOL disable_counters;
+    BOOL crc_check;
     ULONG timeout_seconds;
 } download_option;
+
+typedef struct download_progress_state {
+    LONG total_queued_entries;
+    LONG current_download_index;
+    ULONG total_queued_kb;
+    ULONG remaining_queued_kb;
+} download_progress_state;
 
 
 /* Function Prototypes */
@@ -167,14 +176,19 @@ long convert_string_date_to_int(const char *date);
 LONG download_roms_from_file(const char *filename,
                              whdload_pack_def *WHDLoadPackDefs,
                              const download_option *download_options,
-                             int replaceFiles);
+                             int replaceFiles,
+                             download_progress_state *progress_state);
 LONG download_roms_if_file_exists(whdload_pack_def *WHDLoadPackDefs,
                                   const download_option *download_options,
-                                  int replaceFiles);
+                                  int replaceFiles,
+                                  download_progress_state *progress_state);
 LONG execute_archive_download_command(const char *downloadWHDFile,
+                                      ULONG archive_size_bytes,
+                                      const char *archive_crc,
                                       whdload_pack_def *WHDLoadPackDefs,
                                       const download_option *download_options,
-                                      int replaceFiles);
+                                      int replaceFiles,
+                                      download_progress_state *progress_state);
 LONG extract_existing_archives_from_file(const char *filename,
                                          whdload_pack_def *WHDLoadPackDefs,
                                          const download_option *download_options);
