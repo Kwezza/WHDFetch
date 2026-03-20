@@ -16,6 +16,11 @@
 
 #include "utilities.h"
 #include "platform/platform.h"
+#include "log/log.h"
+
+extern const char *DIR_GAME_DOWNLOADS;
+
+#define UTIL_FILE_SCAN_BUFFER_SIZE 1024
 
 
 #define OUTPUT_BUFFER_SIZE 256 /*used in the RunCommandAndGetFirstLineAlloc function*/
@@ -384,6 +389,196 @@ BOOL parse_timeout_seconds(const char *value, ULONG *out_seconds, ULONG *raw_val
     return TRUE;
 }
 
+int extract_date_from_filename(const char *filename, char *buffer, int bufSize)
+{
+    char *start = NULL;
+    char *end = NULL;
+
+    start = strchr(filename, '(');
+    if (start != NULL)
+    {
+        end = strchr(start, ')');
+        if (end != NULL && (end - start - 1 == 10) && bufSize >= 11)
+        {
+            strncpy(buffer, start + 1, end - start - 1);
+            buffer[end - start - 1] = '\0';
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+long convert_string_date_to_int(const char *date)
+{
+    int year;
+    int month;
+    int day;
+
+    if (date == NULL)
+    {
+        return 0;
+    }
+
+    if (sscanf(date, "%d-%d-%d", &year, &month, &day) != 3)
+    {
+        return 0;
+    }
+
+    return (long)(year * 10000 + month * 100 + day);
+}
+
+int compare_dates_greater_then_date2(const char *date1, const char *date2)
+{
+    long date1Int = convert_string_date_to_int(date1);
+    long date2Int = convert_string_date_to_int(date2);
+
+    return (date2Int > date1Int) ? 1 : 0;
+}
+
+void create_day_with_suffix(int day, char *buffer)
+{
+    switch (day)
+    {
+    case 1:
+    case 21:
+    case 31:
+        sprintf(buffer, "%dst", day);
+        break;
+    case 2:
+    case 22:
+        sprintf(buffer, "%dnd", day);
+        break;
+    case 3:
+    case 23:
+        sprintf(buffer, "%drd", day);
+        break;
+    default:
+        sprintf(buffer, "%dth", day);
+        break;
+    }
+}
+
+const char *get_month_name(int month)
+{
+    const char *months[] = {
+        "January", "February", "March",
+        "April", "May", "June",
+        "July", "August", "September",
+        "October", "November", "December"};
+
+    if (month < 1 || month > 12)
+    {
+        return "Unknown";
+    }
+
+    return months[month - 1];
+}
+
+void convert_date_to_long_style(const char *date, char *result)
+{
+    int day;
+    int month;
+    int year;
+    char daySuffix[5];
+    const char *monthName;
+
+    if (date == NULL || result == NULL)
+    {
+        return;
+    }
+
+    if (sscanf(date, "%d-%d-%d", &year, &month, &day) != 3)
+    {
+        strcpy(result, "Unknown date");
+        return;
+    }
+
+    create_day_with_suffix(day, daySuffix);
+    monthName = get_month_name(month);
+    sprintf(result, "%s %s %d", daySuffix, monthName, year);
+}
+
+int Get_latest_filename_from_directory(const char *directory, const char *searchText, char *latestFileName)
+{
+    struct FileInfoBlock *fib;
+    BPTR lock;
+    char dateStr[11];
+    long newestDate = 0;
+    char newestFile[256] = {0};
+    char fullPath[512];
+    int found = 0;
+
+    if (!(lock = Lock(directory, ACCESS_READ)))
+    {
+        printf("Failed to lock directory: %s\n", directory);
+        return 0;
+    }
+
+    if (!(fib = AllocDosObject(DOS_FIB, NULL)))
+    {
+        UnLock(lock);
+        printf("Failed to allocate FileInfoBlock\n");
+        return 0;
+    }
+
+    if (Examine(lock, fib))
+    {
+        while (ExNext(lock, fib))
+        {
+            if (fib->fib_DirEntryType < 0 && strstr(fib->fib_FileName, searchText))
+            {
+                extract_date_from_filename(fib->fib_FileName, dateStr, sizeof(dateStr));
+                if (strlen(dateStr) > 1)
+                {
+                    long fileDate = convert_string_date_to_int(dateStr);
+                    if (fileDate > newestDate)
+                    {
+                        newestDate = fileDate;
+                        strcpy(newestFile, fib->fib_FileName);
+                        found = 1;
+                    }
+                }
+            }
+        }
+    }
+    else
+    {
+        printf("Failed to examine directory: %s\n", directory);
+        FreeDosObject(DOS_FIB, fib);
+        UnLock(lock);
+        return 0;
+    }
+
+    if (found)
+    {
+        strcpy(latestFileName, newestFile);
+        sprintf(fullPath, "%s/%s", directory, newestFile);
+        if (Examine(lock, fib))
+        {
+            while (ExNext(lock, fib))
+            {
+                if (fib->fib_DirEntryType < 0 && strstr(fib->fib_FileName, searchText) && strcmp(fib->fib_FileName, newestFile) != 0)
+                {
+                    if (extract_date_from_filename(fib->fib_FileName, dateStr, sizeof(dateStr)))
+                    {
+                        long fileDate = convert_string_date_to_int(dateStr);
+                        if (fileDate < newestDate)
+                        {
+                            sprintf(fullPath, "%s/%s", directory, fib->fib_FileName);
+                            DeleteFile(fullPath);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    FreeDosObject(DOS_FIB, fib);
+    UnLock(lock);
+    return found;
+}
+
 void wait_char(void)
 {   
     /* getchar(); */
@@ -565,6 +760,582 @@ char *run_dos_command_and_get_first_line(const char *cmd)
     }
 
     return result;
+}
+
+void Format_text_split_by_Caps(const char *original, char *buffer, size_t buffer_len)
+{
+    const char *ptr = original;
+    size_t buf_index = 0;
+
+    if (original == NULL || buffer == NULL || buffer_len == 0)
+    {
+        return;
+    }
+
+    memset(buffer, 0, buffer_len);
+
+    while (*ptr != '\0' && buf_index < buffer_len - 1)
+    {
+        if (*ptr == '.' || *ptr == '_')
+        {
+            break;
+        }
+
+        if ((isupper((unsigned char)*ptr) || *ptr == '&') && ptr != original)
+        {
+            if (buf_index < buffer_len - 2)
+            {
+                buffer[buf_index++] = ' ';
+            }
+        }
+
+        buffer[buf_index++] = *ptr++;
+
+        if (buf_index == buffer_len - 1)
+        {
+            break;
+        }
+    }
+
+    buffer[buf_index] = '\0';
+}
+
+void turn_filename_into_text_with_spaces(const char *filename, char *outputArray)
+{
+    int i = 0;
+    int j = 0;
+    int startAppending = 0;
+
+    while (filename[i] != '\0')
+    {
+        if (filename[i] == '_')
+        {
+            if (filename[i + 1] == '.' && (filename[i + 2] == 'l' || filename[i + 2] == 'L'))
+            {
+                break;
+            }
+
+            if (startAppending > 0)
+            {
+                outputArray[j] = ' ';
+                j++;
+            }
+            startAppending = 1;
+        }
+        else if (startAppending)
+        {
+            if (filename[i] == '.' && (filename[i + 1] == 'l' || filename[i + 1] == 'L'))
+            {
+                break;
+            }
+            outputArray[j++] = filename[i];
+        }
+        i++;
+    }
+    outputArray[j] = '\0';
+}
+
+void get_folder_name_from_character(char *c)
+{
+    if (isalpha((unsigned char)*c))
+    {
+        *c = toupper((unsigned char)*c);
+    }
+    else if (isdigit((unsigned char)*c))
+    {
+        *c = '0';
+    }
+    else
+    {
+        *c = '0';
+    }
+}
+
+BOOL is_file_locked(const char *filePath)
+{
+    BPTR lock = Lock(filePath, ACCESS_READ);
+
+    if (lock)
+    {
+        UnLock(lock);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+BOOL append_string_to_file(const char *target_filename, const char *append_text, BOOL create_new_file)
+{
+    BPTR file_handle;
+    LONG file_open_mode = (create_new_file == 1) ? MODE_NEWFILE : MODE_READWRITE;
+    size_t textLength = strlen(append_text);
+
+    if (create_new_file == 1)
+    {
+        if (!DeleteFile(target_filename))
+        {
+            printf("Error: Unable to delete existing file %s. IoErr: %ld\n", target_filename, (long)IoErr());
+            return FALSE;
+        }
+    }
+
+    {
+        BOOL needsNewline = (append_text != NULL && textLength > 0 && append_text[textLength - 1] != '\n');
+
+        file_handle = Open((CONST_STRPTR)target_filename, file_open_mode);
+        if (!file_handle)
+        {
+            printf("Error: Unable to open file %s. IoErr: %ld\n", target_filename, (long)IoErr());
+            return FALSE;
+        }
+
+        if (!create_new_file)
+        {
+            Seek(file_handle, 0, OFFSET_END);
+        }
+
+        if (FPuts(file_handle, (CONST_STRPTR)append_text) == EOF)
+        {
+            Close(file_handle);
+            return FALSE;
+        }
+
+        if (needsNewline)
+        {
+            if (FPuts(file_handle, "\n") == EOF)
+            {
+                Close(file_handle);
+                printf("Error: Unable to write newline to file %s. IoErr: %ld\n", target_filename, (long)IoErr());
+                return FALSE;
+            }
+        }
+
+        Close(file_handle);
+    }
+
+    return TRUE;
+}
+
+void delete_all_files_in_dir(const char *directory)
+{
+    struct FileInfoBlock *file_info_block;
+    BPTR directory_lock;
+    BOOL do_more_entries_exist;
+    char clean_path_buffer[256];
+
+    strcpy(clean_path_buffer, directory);
+    sanitize_amiga_file_path(clean_path_buffer);
+
+    if (!(file_info_block = AllocDosObject(DOS_FIB, NULL)))
+    {
+        printf("Failed to allocate memory for FileInfoBlock\n");
+        return;
+    }
+
+    if (!(directory_lock = Lock(clean_path_buffer, ACCESS_READ)))
+    {
+        printf("Failed to lock the directory: %s\n", clean_path_buffer);
+        printf("Error message: (%ld) \n", (long)IoErr());
+        FreeDosObject(DOS_FIB, file_info_block);
+        return;
+    }
+
+    if (!Examine(directory_lock, file_info_block))
+    {
+        printf("Failed to examine the directory: %s\n", clean_path_buffer);
+        UnLock(directory_lock);
+        FreeDosObject(DOS_FIB, file_info_block);
+        return;
+    }
+
+    do_more_entries_exist = ExNext(directory_lock, file_info_block);
+    while (do_more_entries_exist)
+    {
+        if (file_info_block->fib_DirEntryType < 0)
+        {
+            char filePath[256];
+            sprintf(filePath, "%s/%s", clean_path_buffer, file_info_block->fib_FileName);
+
+            if (!DeleteFile(filePath))
+            {
+                printf("Failed to delete file: %s\n", filePath);
+            }
+        }
+        do_more_entries_exist = ExNext(directory_lock, file_info_block);
+    }
+
+    if (IoErr() != ERROR_NO_MORE_ENTRIES)
+    {
+        printf("Error reading directory\n");
+    }
+
+    UnLock(directory_lock);
+    FreeDosObject(DOS_FIB, file_info_block);
+}
+
+void sanitize_amiga_file_path(char *path)
+{
+    ULONG path_len;
+    char *sanitized_path;
+    int src_index;
+    int dest_index;
+
+    if (path == NULL)
+    {
+        return;
+    }
+
+    path_len = strlen(path) + 1;
+    sanitized_path = (char *)amiga_malloc(path_len);
+    if (sanitized_path == NULL)
+    {
+        return;
+    }
+
+    src_index = 0;
+    dest_index = 0;
+
+    while (path[src_index] != '\0')
+    {
+        if (path[src_index] == ':')
+        {
+            sanitized_path[dest_index++] = path[src_index++];
+
+            while (path[src_index] == '/')
+            {
+                src_index++;
+            }
+        }
+        else if (path[src_index] == '/' && path[src_index + 1] == '/')
+        {
+            src_index++;
+        }
+        else if (strchr("*?#|<>\"{}", path[src_index]) != NULL)
+        {
+            sanitized_path[dest_index++] = '_';
+            src_index++;
+        }
+        else if ((unsigned char)path[src_index] < 32)
+        {
+            src_index++;
+        }
+        else
+        {
+            sanitized_path[dest_index++] = path[src_index++];
+        }
+    }
+
+    if (dest_index > 0 && sanitized_path[dest_index - 1] == '/')
+    {
+        dest_index--;
+    }
+
+    sanitized_path[dest_index] = '\0';
+    remove_CR_LF_from_string(sanitized_path);
+    trim(sanitized_path);
+    strcpy(path, sanitized_path);
+
+    amiga_free(sanitized_path);
+}
+
+static BOOL is_existing_directory(const char *path)
+{
+    BPTR existing_lock;
+    struct FileInfoBlock *fib;
+    BOOL is_directory = FALSE;
+
+    if (path == NULL || path[0] == '\0')
+    {
+        return FALSE;
+    }
+
+    existing_lock = Lock(path, ACCESS_READ);
+    if (!existing_lock)
+    {
+        return FALSE;
+    }
+
+    fib = AllocDosObject(DOS_FIB, NULL);
+    if (fib != NULL)
+    {
+        if (Examine(existing_lock, fib))
+        {
+            if (fib->fib_DirEntryType >= 0)
+            {
+                is_directory = TRUE;
+            }
+        }
+        FreeDosObject(DOS_FIB, fib);
+    }
+
+    UnLock(existing_lock);
+    return is_directory;
+}
+
+BOOL create_Directory_and_unlock(const char *dirName)
+{
+    char path_copy[512];
+    char *slash;
+    BPTR lock;
+
+    if (dirName == NULL || dirName[0] == '\0')
+    {
+        log_error(LOG_GENERAL, "dir: invalid directory name\n");
+        return FALSE;
+    }
+
+    if (is_existing_directory(dirName))
+    {
+        log_debug(LOG_GENERAL, "dir: already exists '%s'\n", dirName);
+        return TRUE;
+    }
+
+    strncpy(path_copy, dirName, sizeof(path_copy) - 1);
+    path_copy[sizeof(path_copy) - 1] = '\0';
+
+    slash = strchr(path_copy, '/');
+    while (slash != NULL)
+    {
+        BPTR step_lock;
+
+        *slash = '\0';
+        if (path_copy[0] != '\0' && does_file_or_folder_exist(path_copy, 0) == 0)
+        {
+            step_lock = CreateDir(path_copy);
+            if (step_lock)
+            {
+                UnLock(step_lock);
+                log_info(LOG_GENERAL, "dir: created intermediate '%s'\n", path_copy);
+            }
+            else
+            {
+                LONG err = IoErr();
+                if (err != ERROR_OBJECT_EXISTS)
+                {
+                    if (is_existing_directory(path_copy))
+                    {
+                        log_debug(LOG_GENERAL, "dir: intermediate already exists '%s'\n", path_copy);
+                        *slash = '/';
+                        slash = strchr(slash + 1, '/');
+                        continue;
+                    }
+
+                    log_error(LOG_GENERAL,
+                              "dir: failed to create intermediate '%s' (IoErr=%ld)\n",
+                              path_copy,
+                              (long)err);
+                    return FALSE;
+                }
+                log_debug(LOG_GENERAL, "dir: intermediate already exists '%s'\n", path_copy);
+            }
+        }
+        *slash = '/';
+        slash = strchr(slash + 1, '/');
+    }
+
+    lock = CreateDir(dirName);
+    if (lock)
+    {
+        UnLock(lock);
+        log_info(LOG_GENERAL, "dir: created '%s'\n", dirName);
+        return TRUE;
+    }
+    else
+    {
+        LONG err = IoErr();
+        if (err == ERROR_OBJECT_EXISTS)
+        {
+            log_debug(LOG_GENERAL, "dir: already exists '%s'\n", dirName);
+            return TRUE;
+        }
+
+        if (is_existing_directory(dirName))
+        {
+            log_debug(LOG_GENERAL, "dir: already exists '%s'\n", dirName);
+            return TRUE;
+        }
+
+        log_error(LOG_GENERAL, "dir: failed to create '%s' (IoErr=%ld)\n", dirName, (long)err);
+        return FALSE;
+    }
+}
+
+void remove_all_occurrences(char *source_string, const char *toRemove)
+{
+    int lenToRemove = strlen(toRemove);
+    char *p = strstr(source_string, toRemove);
+    while (p != NULL)
+    {
+        *p = '\0';
+        strcat(source_string, p + lenToRemove);
+        p = strstr(source_string, toRemove);
+    }
+}
+
+void ensure_time_zone_set(void)
+{
+    CONST_STRPTR name = "TZ";
+    CONST_STRPTR value = "GMT0BST,M3.5.0/01,M10.5.0/02";
+    LONG size = strlen(value) + 1;
+    LONG flags = GVF_GLOBAL_ONLY;
+    char *tz = getenv("TZ");
+
+    if (tz == NULL || strlen(tz) == 0)
+    {
+        SetVar(name, value, size, flags);
+    }
+}
+
+int get_bsdSocket_version(void)
+{
+    struct Library *socket_base;
+    int version = 0;
+
+    socket_base = OpenLibrary("bsdsocket.library", 0);
+    if (socket_base == NULL)
+    {
+        return -1;
+    }
+
+    version = socket_base->lib_Version;
+    CloseLibrary(socket_base);
+
+    return version;
+}
+
+void create_directory_based_on_filename(const char *parentDir, const char *fileName)
+{
+    size_t dirLen = strlen(parentDir);
+    char downloadFirstLetter[2];
+    char fileStore[256];
+    char cleanParentDir[256];
+
+    strcpy(cleanParentDir, parentDir);
+
+    if (cleanParentDir[dirLen - 1] == '/')
+    {
+        cleanParentDir[dirLen - 1] = '\0';
+    }
+
+    create_Directory_and_unlock(DIR_GAME_DOWNLOADS);
+    sprintf(fileStore, "%s/%s", DIR_GAME_DOWNLOADS, cleanParentDir);
+    sanitize_amiga_file_path(fileStore);
+
+    create_Directory_and_unlock(fileStore);
+    sprintf(downloadFirstLetter, "%c", fileName[0]);
+    get_folder_name_from_character(downloadFirstLetter);
+    sprintf(fileStore, "%s/%s/%s", DIR_GAME_DOWNLOADS, cleanParentDir, downloadFirstLetter);
+    sanitize_amiga_file_path(fileStore);
+
+    create_Directory_and_unlock(fileStore);
+}
+
+char *concatStrings(const char *s1, const char *s2)
+{
+    size_t len1 = strlen(s1);
+    size_t len2 = strlen(s2);
+    char *result = amiga_malloc(len1 + len2 + 1);
+
+    if (result == NULL)
+    {
+        fprintf(stderr, "Memory allocation failed\n");
+        return NULL;
+    }
+    strcpy(result, s1);
+    strcat(result, s2);
+    return result;
+}
+
+char *get_executable_version(const char *file_path)
+{
+    BPTR file;
+    UBYTE buffer[UTIL_FILE_SCAN_BUFFER_SIZE];
+    char *version = NULL;
+    char *clean_version = NULL;
+    char *error_msg = NULL;
+    LONG bytes_read;
+    int i;
+    int start;
+    int end;
+    int version_len;
+    int clean_len;
+    const int tag_len = 5;
+
+    if (!does_file_or_folder_exist(file_path, 0))
+    {
+        error_msg = amiga_malloc(128);
+        if (error_msg != NULL)
+        {
+            sprintf(error_msg, "[File not found: %s]", file_path);
+        }
+        return error_msg;
+    }
+
+    file = Open((CONST_STRPTR)file_path, MODE_OLDFILE);
+    if (!file)
+    {
+        error_msg = amiga_malloc(64);
+        if (error_msg != NULL)
+        {
+            strcpy(error_msg, "[Unable to open file]");
+        }
+        return error_msg;
+    }
+
+    while ((bytes_read = Read(file, buffer, UTIL_FILE_SCAN_BUFFER_SIZE)) > 0)
+    {
+        for (i = 0; i <= bytes_read - tag_len; ++i)
+        {
+            if (buffer[i] == '$' &&
+                buffer[i + 1] == 'V' &&
+                buffer[i + 2] == 'E' &&
+                buffer[i + 3] == 'R' &&
+                buffer[i + 4] == ':')
+            {
+                start = i;
+                end = i + tag_len;
+                while (end < bytes_read && buffer[end] >= 0x20 && buffer[end] <= 0x7E)
+                {
+                    ++end;
+                }
+
+                version_len = end - start;
+                version = amiga_malloc(version_len + 1);
+
+                if (version != NULL)
+                {
+                    CopyMem(&buffer[start], version, version_len);
+                    version[version_len] = '\0';
+
+                    if (version_len > tag_len)
+                    {
+                        clean_len = version_len - tag_len;
+                        clean_version = amiga_malloc(clean_len + 1);
+
+                        if (clean_version != NULL)
+                        {
+                            CopyMem(version + tag_len, clean_version, clean_len);
+                            clean_version[clean_len] = '\0';
+                        }
+                    }
+
+                    amiga_free(version);
+                }
+
+                Close(file);
+                return clean_version;
+            }
+        }
+    }
+
+    Close(file);
+
+    error_msg = amiga_malloc(64);
+    if (error_msg != NULL)
+    {
+        strcpy(error_msg, "[No version info found]");
+    }
+    return error_msg;
 }
 
 /*------------------------------------------------------------------------*/

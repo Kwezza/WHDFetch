@@ -62,6 +62,11 @@ extern const char *WHDLOAD_FILE_FILTER_ZIP_GAMES;
 extern const char *WHDLOAD_FILE_FILTER_ZIP_MAGAZINES;
 
 extern const char *GITHUB_ADDRESS;
+extern const char *DIR_DAT_FILES;
+extern const char *DIR_GAME_DOWNLOADS;
+extern const char *DIR_HOLDING;
+extern const char *DIR_TEMP;
+extern const char *DIR_ZIP_FILES;
 
 /* Constants for WHDLoad Pack Definitions */
 extern const int DEMOS_BETA;
@@ -148,31 +153,8 @@ typedef struct download_progress_state {
 
 
 /* Function Prototypes */
-BOOL append_string_to_file(const char *target_filename, const char *append_text, BOOL create_new_file);
-BOOL create_Directory_and_unlock(const char *dirName);
-
-BOOL extract_Zip_file_and_rename(const char *zipPath, whdload_pack_def[], int size_WHDLoadPackDef, int verboseMode);
-
-BOOL is_file_locked(const char *filePath);
-
-BOOL process_and_archive_WHDLoadDat_Files(whdload_pack_def WHDLoadPackDefs[], int size_WHDLoadPackDef);
 BOOL startup_text_and_needed_progs_are_installed(int number_of_args);
-char *concatStrings(const char *s1, const char *s2);
 char *get_first_matching_fileName(const char *directory);
-const char *get_month_name(int month);
-int compare_and_decide_DatFileDownload(char *filename,
-                                       const char *searchText,
-                                       int *should_download_zip,
-                                       BOOL force_download);
-int compare_dates_greater_then_date2(const char *date1, const char *date2);
-int download_WHDLoadPacks_From_Links(const char *bufferm,
-                                     whdload_pack_def WHDLoadPackDefs[],
-                                     int size_WHDLoadPackDef,
-                                     const download_option *download_options);
-int extract_date_from_filename(const char *filename, char *buffer, int bufSize);
-int Get_latest_filename_from_directory(const char *directory, const char *text, char *latestFileName);
-int get_bsdSocket_version(void);
-long convert_string_date_to_int(const char *date);
 LONG download_roms_from_file(const char *filename,
                              whdload_pack_def *WHDLoadPackDefs,
                              const download_option *download_options,
@@ -194,23 +176,6 @@ LONG extract_existing_archives_from_file(const char *filename,
                                          const download_option *download_options);
 LONG extract_existing_archives_if_file_exists(whdload_pack_def *WHDLoadPackDefs,
                                               const download_option *download_options);
-void convert_date_to_long_style(const char *date, char *result);
-void create_day_with_suffix(int day, char *buffer);
-void create_directory_based_on_filename(const char *parentDir, const char *fileName);
-void delete_all_files_in_dir(const char *directory);
-void ensure_time_zone_set(void);
-int extract_and_save_rom_names_from_XML(char *inputFilePath, char *outputFilePath, const char *packName);
-void extract_and_validate_HTML_links(whdload_pack_def WHDLoadPackDefs[],
-                                     int size_WHDLoadPackDef,
-                                     const download_option *download_options);
-void Format_text_split_by_Caps(const char *original, char *buffer, size_t buffer_len);
-void get_folder_name_from_character(char *c);
-void remove_all_occurrences(char *src, const char *toRemove);
-void sanitize_amiga_file_path(char *path);
-void setup_app_defaults(whdload_pack_def WHDLoadPackDefs[], download_option *downloadOptions);
-
-void turn_filename_into_text_with_spaces(const char *filename, char *storage);
-char *get_executable_version(const char *filePath);
 
 
 

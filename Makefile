@@ -102,6 +102,15 @@ endif
 
 SRCS = \
     $(SRC_DIR)/main.c \
+	$(SRC_DIR)/cli/cli_parser.c \
+	$(SRC_DIR)/config/app_constants.c \
+	$(SRC_DIR)/config/app_defaults.c \
+	$(SRC_DIR)/config/app_state.c \
+	$(SRC_DIR)/startup/startup.c \
+	$(SRC_DIR)/lifecycle/lifecycle.c \
+	$(SRC_DIR)/phases/html_phase.c \
+	$(SRC_DIR)/phases/dat_phase.c \
+	$(SRC_DIR)/phases/download_phase.c \
 	$(SRC_DIR)/ini_parser.c \
 	$(SRC_DIR)/icon_unsnapshot.c \
     $(SRC_DIR)/utilities.c \
@@ -112,6 +121,7 @@ SRCS = \
 	$(SRC_DIR)/report/report.c \
 	$(SRC_DIR)/extract/extract.c \
     $(SRC_DIR)/download/http_download.c \
+	$(SRC_DIR)/download/download_retry.c \
     $(SRC_DIR)/download/download_lib.c \
     $(SRC_DIR)/download/file_crc.c \
     $(SRC_DIR)/download/timer_shared.c \
@@ -125,6 +135,15 @@ SRCS = \
 
 OBJS = \
     $(OUT_DIR)/main.o \
+	$(OUT_DIR)/cli/cli_parser.o \
+	$(OUT_DIR)/config/app_constants.o \
+	$(OUT_DIR)/config/app_defaults.o \
+	$(OUT_DIR)/config/app_state.o \
+	$(OUT_DIR)/startup/startup.o \
+	$(OUT_DIR)/lifecycle/lifecycle.o \
+	$(OUT_DIR)/phases/html_phase.o \
+	$(OUT_DIR)/phases/dat_phase.o \
+	$(OUT_DIR)/phases/download_phase.o \
 	$(OUT_DIR)/ini_parser.o \
 	$(OUT_DIR)/icon_unsnapshot.o \
     $(OUT_DIR)/utilities.o \
@@ -135,6 +154,7 @@ OBJS = \
 	$(OUT_DIR)/report/report.o \
 	$(OUT_DIR)/extract/extract.o \
     $(OUT_DIR)/download/http_download.o \
+	$(OUT_DIR)/download/download_retry.o \
     $(OUT_DIR)/download/download_lib.o \
     $(OUT_DIR)/download/file_crc.o \
     $(OUT_DIR)/download/timer_shared.o \
@@ -154,6 +174,11 @@ directories:
 	@if not exist "$(OUT_DIR)"            mkdir "$(OUT_DIR)"
 	@if not exist "$(GENERATED_DIR)"      mkdir "$(GENERATED_DIR)"
 	@if not exist "$(OUT_DIR)\log"        mkdir "$(OUT_DIR)\log"
+	@if not exist "$(OUT_DIR)\cli"        mkdir "$(OUT_DIR)\cli"
+	@if not exist "$(OUT_DIR)\config"     mkdir "$(OUT_DIR)\config"
+	@if not exist "$(OUT_DIR)\startup"    mkdir "$(OUT_DIR)\startup"
+	@if not exist "$(OUT_DIR)\lifecycle"  mkdir "$(OUT_DIR)\lifecycle"
+	@if not exist "$(OUT_DIR)\phases"     mkdir "$(OUT_DIR)\phases"
 	@if not exist "$(OUT_DIR)\platform"  mkdir "$(OUT_DIR)\platform"
 	@if not exist "$(OUT_DIR)\extract"   mkdir "$(OUT_DIR)\extract"
 	@if not exist "$(OUT_DIR)\report"    mkdir "$(OUT_DIR)\report"
@@ -196,6 +221,42 @@ $(OUT_DIR)/main.o: $(SRC_DIR)/main.c $(GENERATED_VERSION_H)
 	@echo Compiling: $<
 	$(CC) $(CFLAGS) -c $< -o $@
 
+$(OUT_DIR)/cli/cli_parser.o: $(SRC_DIR)/cli/cli_parser.c
+	@echo Compiling: $<
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OUT_DIR)/config/app_constants.o: $(SRC_DIR)/config/app_constants.c $(GENERATED_VERSION_H)
+	@echo Compiling: $<
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OUT_DIR)/config/app_defaults.o: $(SRC_DIR)/config/app_defaults.c
+	@echo Compiling: $<
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OUT_DIR)/config/app_state.o: $(SRC_DIR)/config/app_state.c
+	@echo Compiling: $<
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OUT_DIR)/startup/startup.o: $(SRC_DIR)/startup/startup.c $(GENERATED_VERSION_H)
+	@echo Compiling: $<
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OUT_DIR)/lifecycle/lifecycle.o: $(SRC_DIR)/lifecycle/lifecycle.c
+	@echo Compiling: $<
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OUT_DIR)/phases/html_phase.o: $(SRC_DIR)/phases/html_phase.c
+	@echo Compiling: $<
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OUT_DIR)/phases/dat_phase.o: $(SRC_DIR)/phases/dat_phase.c
+	@echo Compiling: $<
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OUT_DIR)/phases/download_phase.o: $(SRC_DIR)/phases/download_phase.c
+	@echo Compiling: $<
+	$(CC) $(CFLAGS) -c $< -o $@
+
 $(OUT_DIR)/ini_parser.o: $(SRC_DIR)/ini_parser.c
 	@echo Compiling: $<
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -233,6 +294,10 @@ $(OUT_DIR)/extract/extract.o: $(SRC_DIR)/extract/extract.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(OUT_DIR)/download/http_download.o: $(SRC_DIR)/download/http_download.c
+	@echo Compiling: $<
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OUT_DIR)/download/download_retry.o: $(SRC_DIR)/download/download_retry.c
 	@echo Compiling: $<
 	$(CC) $(CFLAGS) -c $< -o $@
 
