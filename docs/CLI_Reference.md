@@ -136,14 +136,13 @@ selection commands.
 ### EXTRACTONLY
 
 Processes only the archives (`.lha` and `.lzx`) that are already present on disk in
-`GameFiles/<pack>/<letter>/`. No game or demo archives are downloaded. Network activity may
-still occur for index and DAT metadata retrieval.
+`GameFiles/<pack>/<letter>/`. No game or demo archives are downloaded.
 
 This mode is designed for situations where you have previously downloaded archives,
 perhaps using `NOEXTRACT`, and now want to extract them without re-downloading. The
-program reads the DAT file for each selected pack, iterates over each ROM entry, checks
-whether the corresponding archive exists locally, and if so, runs the extraction pipeline
-on it.
+program reads already-downloaded DAT list files from `temp/Dat files/` for each selected
+pack, iterates over each ROM entry, checks whether the corresponding archive exists
+locally, and if so, runs the extraction pipeline on it.
 
 When `EXTRACTONLY` is active, the `extract_archives` flag is forced to `TRUE` regardless of
 any other setting, including `NOEXTRACT`.
@@ -519,13 +518,11 @@ whdfetch DOWNLOADALL TIMEOUT=45
 
 ### NOSKIPREPORT
 
-Suppresses the on-screen messages printed each time an existing archive is skipped. During
-a large update run where most archives already exist, the console can fill rapidly with
-messages such as `File already exists, skipping: ...`. `NOSKIPREPORT` silences these,
-giving cleaner output.
+Suppresses on-screen messages printed when existing archives are skipped. During
+large update runs where many archives are already present or already extracted,
+this keeps console output cleaner.
 
-Skip events are still counted in the final summary statistics and are still written to log
-files.
+Skip events are still counted in final summary statistics and remain in log files.
 
 **Example:**
 
@@ -667,6 +664,7 @@ In short, CLI pack-selection commands are authoritative whenever at least one is
 | FORCEDOWNLOAD     | `force_download=true`                 | `[global]`          | Stronger than `NODOWNLOADSKIP` |
 | NOICONS           | `use_custom_icons=false`              | `[global]`          | Also disables unsnapshotting   |
 | DISABLECOUNTERS   | `disable_counters=true`               | `[global]`          | Disables current and future counters |
+| NOSKIPREPORT      | no INI equivalent                     | —                   | Suppresses skip-message console output |
 | CRCCHECK          | `crccheck=true`                       | `[global]`          | Enables archive CRC verification |
 | TIMEOUT=<seconds> | `timeout_seconds=<seconds>`           | `[global]`          | Range 5-60 seconds, CLI overrides INI |
 | SKIPAGA           | `skip_aga=true`                       | `[filters]`         | Filter                         |
@@ -695,7 +693,7 @@ are internal behaviour flags shown for completeness.
 | `use_custom_icons`              | `TRUE`                                      |
 | `unsnapshot_icons`              | `TRUE`                                      |
 | `disable_counters`              | `FALSE`                                     |
-| `crccheck`                      | `FALSE`                                     |
+| `crc_check`                     | `FALSE`                                     |
 | `skip_aga`                      | `0` (disabled)                              |
 | `skip_cd`                       | `0` (disabled)                              |
 | `skip_ntsc`                     | `0` (disabled)                              |

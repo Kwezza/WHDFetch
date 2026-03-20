@@ -1068,8 +1068,11 @@ int main(int argc, char *argv[])
         }
         
         /* Mode settings */
-        if (strncasecmp_custom(argv[i], "NOSKIPREPOR", strlen(argv[i])) == 0)
+        if (strncasecmp_custom(argv[i], "NOSKIPREPORT", strlen(argv[i])) == 0)
+        {
             download_options.no_skip_messages = 1;
+            no_skip_messages = 1;
+        }
 
         if (strncasecmp_custom(argv[i], "VERBOSE", strlen(argv[i])) == 0)
         {
