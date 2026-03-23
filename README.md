@@ -65,6 +65,7 @@ Games will be downloaded to `GameFiles/Games/` organised into letter sub-folders
 | `FORCEEXTRACT` | Re-extract even when `ArchiveName.txt` already matches |
 | `FORCEDOWNLOAD` | Re-download even when the title is already extracted |
 | `NODOWNLOADSKIP` | Download even if an extraction marker exists |
+| `VERIFYMARKER` | Enable extra `ArchiveName.txt` verification before download skip |
 
 ### Skip filters
 
@@ -105,6 +106,7 @@ download_website=http://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20Packs/
 extract_archives=true
 skip_existing_extractions=true
 skip_download_if_extracted=true
+verify_archive_marker_before_download=false
 verbose_output=false
 extract_path=                     ; empty = extract in place
 delete_archives_after_extract=true
@@ -146,8 +148,11 @@ Boolean values accept `true`/`false`, `yes`/`no`, `1`/`0`.
 Before downloading a title, whdfetch checks whether it has already been extracted:
 
 1. It looks up the archive filename in the in-memory `.archive_index` cache  
-   (loaded from `GameFiles/<pack>/<letter>/.archive_index` at startup)
-2. If found, it also checks `<game folder>/ArchiveName.txt` — a two-line marker:
+    (loaded from `GameFiles/<pack>/<letter>/.archive_index` at startup)
+2. If found, it verifies the indexed extracted folder still exists.
+3. Optional: when `VERIFYMARKER` is enabled (or
+    `verify_archive_marker_before_download=true` in INI), it also checks
+    `<game folder>/ArchiveName.txt` — a two-line marker:
 
 ```
 Games
@@ -155,6 +160,7 @@ Academy_v1.2.lha
 ```
 
 If line 2 is an exact match for the incoming archive filename, the title is skipped.
+Without `VERIFYMARKER`, the pre-download skip uses the index+folder fast path.
 
 Use `FORCEEXTRACT` to bypass the extraction skip check.  
 Use `FORCEDOWNLOAD` or `NODOWNLOADSKIP` to bypass the download skip check.

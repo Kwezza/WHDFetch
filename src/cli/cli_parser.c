@@ -139,6 +139,9 @@ void cli_apply_arguments(int argc,
         if (strncasecmp_custom(argv[i], "VERBOSE", strlen(argv[i])) == 0)
             download_options->verbose_output = 1;
 
+        if (strncasecmp_custom(argv[i], "ENABLELOGGING", strlen(argv[i])) == 0)
+            download_options->enable_logging = TRUE;
+
         if (strncasecmp_custom(argv[i], "NOEXTRACT", strlen(argv[i])) == 0)
             download_options->extract_archives = FALSE;
 
@@ -173,6 +176,9 @@ void cli_apply_arguments(int argc,
         if (strncasecmp_custom(argv[i], "NODOWNLOADSKIP", strlen(argv[i])) == 0)
             download_options->skip_download_if_extracted = FALSE;
 
+        if (strncasecmp_custom(argv[i], "VERIFYMARKER", strlen(argv[i])) == 0)
+            download_options->verify_archive_marker_before_download = TRUE;
+
         if (strncasecmp_custom(argv[i], "FORCEDOWNLOAD", strlen(argv[i])) == 0)
             download_options->force_download = TRUE;
 
@@ -188,7 +194,34 @@ void cli_apply_arguments(int argc,
         if (strncasecmp_custom(argv[i], "CRCCHECK", strlen(argv[i])) == 0)
             download_options->crc_check = TRUE;
 
+        if (strncasecmp_custom(argv[i], "ESTIMATESPACE", strlen(argv[i])) == 0)
+            download_options->estimate_space = TRUE;
+
         if (strncasecmp_custom(argv[i], "TIMEOUT=", 8) == 0)
             apply_timeout_argument(download_options, argv[i] + 8);
+    }
+
+    /* If ESTIMATESPACE was requested and no pack was explicitly selected,
+     * automatically select all packs so the user gets a full picture. */
+    if (download_options->estimate_space == TRUE)
+    {
+        int any_requested = 0;
+        int j;
+        for (j = 0; j < 5; j++)
+        {
+            if (whdload_pack_defs[j].user_requested_download == 1)
+            {
+                any_requested = 1;
+                break;
+            }
+        }
+        if (!any_requested)
+        {
+            whdload_pack_defs[GAMES].user_requested_download        = 1;
+            whdload_pack_defs[GAMES_BETA].user_requested_download   = 1;
+            whdload_pack_defs[DEMOS].user_requested_download        = 1;
+            whdload_pack_defs[DEMOS_BETA].user_requested_download   = 1;
+            whdload_pack_defs[MAGAZINES].user_requested_download    = 1;
+        }
     }
 }

@@ -268,6 +268,147 @@ ULONG sum_total_queued_kb_for_selected_packs(struct whdload_pack_def whdload_pac
     return total_kb;
 }
 
+void sum_queued_kb_per_pack(struct whdload_pack_def whdload_pack_defs[],
+                            int num_packs,
+                            ULONG *out_kb_per_pack)
+{
+    int i;
+
+    if (whdload_pack_defs == NULL || out_kb_per_pack == NULL || num_packs <= 0)
+    {
+        return;
+    }
+
+    for (i = 0; i < num_packs; i++)
+    {
+        char list_path[256] = {0};
+
+        out_kb_per_pack[i] = 0;
+
+        if (whdload_pack_defs[i].user_requested_download != 1)
+        {
+            continue;
+        }
+
+        if (!build_pack_text_list_path(&whdload_pack_defs[i], list_path, sizeof(list_path)))
+        {
+            log_warning(LOG_GENERAL,
+                        "estimate: no DAT list found for pack '%s'\n",
+                        whdload_pack_defs[i].full_text_name_of_pack);
+            continue;
+        }
+
+        out_kb_per_pack[i] = sum_queued_bytes_from_list_file(list_path);
+    }
+}
+
+void print_space_estimate(struct whdload_pack_def whdload_pack_defs[],
+                          int num_packs,
+                          const ULONG *kb_per_pack)
+{
+    ULONG total_archive_kb  = 0;
+    ULONG total_extracted_kb = 0;
+    ULONG keep_kb, keep_mb_whole, keep_mb_tenths;
+    ULONG tot_arch_mb_whole, tot_arch_mb_tenths;
+    ULONG tot_ext_mb_whole, tot_ext_mb_tenths;
+    int i;
+
+    if (whdload_pack_defs == NULL || kb_per_pack == NULL || num_packs <= 0)
+    {
+        return;
+    }
+
+    printf("\n" textReset textBold "=== Disk Space Estimate ===" textReset "\n\n");
+
+    for (i = 0; i < num_packs; i++)
+    {
+        ULONG archive_kb, extracted_kb;
+        ULONG arch_mb_whole, arch_mb_tenths;
+        ULONG ext_mb_whole,  ext_mb_tenths;
+
+        if (whdload_pack_defs[i].user_requested_download != 1)
+        {
+            continue;
+        }
+
+        archive_kb   = kb_per_pack[i];
+        extracted_kb = archive_kb + (archive_kb / 2UL); /* 1.5x estimate */
+
+        arch_mb_whole  = archive_kb   / 1024UL;
+        arch_mb_tenths = ((archive_kb   % 1024UL) * 10UL) / 1024UL;
+        ext_mb_whole   = extracted_kb  / 1024UL;
+        ext_mb_tenths  = ((extracted_kb  % 1024UL) * 10UL) / 1024UL;
+
+        printf(textBold "%s:" textReset "\n", whdload_pack_defs[i].full_text_name_of_pack);
+        printf("  Archive size:           %ld.%ld MB\n",
+               (long)arch_mb_whole, (long)arch_mb_tenths);
+        printf("  Extracted (estimate):   %ld.%ld MB\n\n",
+               (long)ext_mb_whole,  (long)ext_mb_tenths);
+
+        if ((ULONG)(0xFFFFFFFFUL - total_archive_kb) < archive_kb)
+            total_archive_kb = 0xFFFFFFFFUL;
+        else
+            total_archive_kb += archive_kb;
+
+        if ((ULONG)(0xFFFFFFFFUL - total_extracted_kb) < extracted_kb)
+            total_extracted_kb = 0xFFFFFFFFUL;
+        else
+            total_extracted_kb += extracted_kb;
+    }
+
+    tot_arch_mb_whole  = total_archive_kb  / 1024UL;
+    tot_arch_mb_tenths = ((total_archive_kb  % 1024UL) * 10UL) / 1024UL;
+    tot_ext_mb_whole   = total_extracted_kb / 1024UL;
+    tot_ext_mb_tenths  = ((total_extracted_kb % 1024UL) * 10UL) / 1024UL;
+
+    printf("------------------------------------------------------------\n");
+    printf(textBold "Total archive size:       %ld.%ld MB\n" textReset,
+           (long)tot_arch_mb_whole, (long)tot_arch_mb_tenths);
+    printf(textBold "Total extracted (est.):   %ld.%ld MB\n\n" textReset,
+           (long)tot_ext_mb_whole,  (long)tot_ext_mb_tenths);
+
+    keep_kb = total_archive_kb;
+    if ((ULONG)(0xFFFFFFFFUL - keep_kb) < total_extracted_kb)
+        keep_kb = 0xFFFFFFFFUL;
+    else
+        keep_kb += total_extracted_kb;
+
+    keep_mb_whole  = keep_kb / 1024UL;
+    keep_mb_tenths = ((keep_kb % 1024UL) * 10UL) / 1024UL;
+
+    printf("Extracted size is estimated at 1.5x the archive size (rough guide).\n");
+    printf("If using KEEPARCHIVES, you will need %ld.%ld MB total (archives + extracted).\n\n",
+           (long)keep_mb_whole, (long)keep_mb_tenths);
+
+    /* Write the same summary to the log file so it appears in PROGDIR:logs/. */
+    log_info(LOG_GENERAL, "estimate: archive total %ld.%ld MB  extracted-est %ld.%ld MB  keeparchives-total %ld.%ld MB\n",
+             (long)tot_arch_mb_whole, (long)tot_arch_mb_tenths,
+             (long)tot_ext_mb_whole,  (long)tot_ext_mb_tenths,
+             (long)keep_mb_whole,     (long)keep_mb_tenths);
+
+    for (i = 0; i < num_packs; i++)
+    {
+        ULONG arch_kb, ext_kb, arch_mw, arch_mt, ext_mw, ext_mt;
+
+        if (whdload_pack_defs[i].user_requested_download != 1)
+        {
+            continue;
+        }
+
+        arch_kb = kb_per_pack[i];
+        ext_kb  = arch_kb + (arch_kb / 2UL);
+        arch_mw = arch_kb / 1024UL;
+        arch_mt = ((arch_kb % 1024UL) * 10UL) / 1024UL;
+        ext_mw  = ext_kb  / 1024UL;
+        ext_mt  = ((ext_kb  % 1024UL) * 10UL) / 1024UL;
+
+        log_info(LOG_GENERAL, "estimate: pack='%s' archive=%ld.%ld MB extracted-est=%ld.%ld MB\n",
+                 whdload_pack_defs[i].full_text_name_of_pack,
+                 (long)arch_mw, (long)arch_mt,
+                 (long)ext_mw,  (long)ext_mt);
+    }
+}
+
 char *get_first_matching_fileName(const char *fileNameToFind)
 {
     BPTR lock;
@@ -625,7 +766,7 @@ LONG execute_archive_download_command(const char *downloadWHDFile,
     {
         if (no_skip_messages < 1)
         {
-            printf(textReset "File already exists, skipping: %s\n", downloadWHDFile);
+            printf(textReset "Skip download (exists): %s\n", downloadWHDFile);
         }
         if (download_options != NULL && download_options->extract_archives == TRUE)
         {
@@ -695,7 +836,7 @@ LONG execute_archive_download_command(const char *downloadWHDFile,
     {
         if (no_skip_messages < 1)
         {
-            printf(textReset "Already extracted, skipping download: %s\n", downloadWHDFile);
+            printf(textReset "Skip dl (extracted): %s\n", downloadWHDFile);
         }
 
         log_info(LOG_GENERAL,

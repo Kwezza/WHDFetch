@@ -90,9 +90,31 @@ int main(int argc, char *argv[])
     /* Initialize application defaults and structures */
     setup_app_defaults(whdload_pack_defs, &download_options);
 
-    /* Start the log system immediately so all shutdown steps are captured */
-    initialize_log_system(TRUE);
-    log_info(LOG_GENERAL, "main: starting up\n");
+    if (cli_is_argument_present(argc, argv, "ENABLELOGGING"))
+    {
+        download_options.enable_logging = TRUE;
+    }
+
+    if (download_options.enable_logging)
+    {
+        /* Logging is opt-in because file I/O is expensive on original Amiga hardware. */
+        initialize_log_system(TRUE);
+        log_info(LOG_GENERAL, "main: starting up\n");
+    }
+
+    /* Log the raw command-line arguments for diagnostics */
+    {
+        int j;
+        if (download_options.enable_logging)
+        {
+            log_info(LOG_GENERAL, "main: argc=%ld\n", (long)argc);
+            for (j = 0; j < argc; j++)
+            {
+                log_info(LOG_GENERAL, "main: argv[%ld]='%s'\n", (long)j, argv[j] ? argv[j] : "(null)");
+            }
+        }
+    }
+
     report_init();
 
     if (ini_parser_load_overrides(whdload_pack_defs, &download_options))
@@ -160,7 +182,8 @@ int main(int argc, char *argv[])
     /* Process command line arguments */
     cli_apply_arguments(argc, argv, whdload_pack_defs, &download_options);
 
-    if (!validate_extraction_startup_configuration(&download_options))
+    if (download_options.estimate_space == FALSE &&
+        !validate_extraction_startup_configuration(&download_options))
     {
         log_error(LOG_GENERAL, "main: extraction startup validation failed, exiting\n");
         do_shutdown();
@@ -295,12 +318,45 @@ int main(int argc, char *argv[])
 
     /* Extract DAT files from downloaded archives */
     printf("\n" textReset textBold "Extracting DAT files..." textReset "\n");
+
+    /* ESTIMATESPACE: force DAT re-processing so the current filters are applied,
+     * even when the cached ZIP is the same date as last time.  The existing ZIPs
+     * in temp/Zip files/ will be re-extracted; if none are present the old .txt
+     * files are used as a fallback. */
+    if (download_options.estimate_space == TRUE)
+    {
+        for (i = 0; i < 5; i++)
+        {
+            if (whdload_pack_defs[i].user_requested_download == 1)
+            {
+                whdload_pack_defs[i].updated_dat_downloaded = 1;
+            }
+        }
+    }
+
     extract_Zip_file_and_rename(DIR_ZIP_FILES, whdload_pack_defs, 5, download_options.verbose_output);
 
     /* Process the extracted DAT files */
     printf("\n%s%sProcessing DAT Files...%s\n", textReset, textBold, textReset);
     printf("Extracting file names from the XML file...\n");
     process_and_archive_WHDLoadDat_Files(whdload_pack_defs, 5);
+
+    /* ESTIMATESPACE: sum archive sizes from the DAT list and print estimates, then exit. */
+    if (download_options.estimate_space == TRUE)
+    {
+        ULONG kb_per_pack[5];
+        int j;
+        for (j = 0; j < 5; j++)
+        {
+            kb_per_pack[j] = 0;
+        }
+        sum_queued_kb_per_pack(whdload_pack_defs, 5, kb_per_pack);
+        print_space_estimate(whdload_pack_defs, 5, kb_per_pack);
+        log_info(LOG_GENERAL, "main: ESTIMATESPACE complete, shutting down\n");
+        do_shutdown();
+        return 0;
+    }
+
     printf("\n" textReset textBold "Extraction results:" textReset "\n");
 
     /* Show extraction results using formatted text builder */
@@ -424,11 +480,11 @@ int main(int argc, char *argv[])
     printf("\n");
 
     /* Show future plans message */
-    printf("Work in progress... You can use WHDArchiveExtractor from Aminet to\n"
-           "extract the archives. Currently planning to enhanced this tool\n"
-           "with WHDArchiveExtractor, enabling it to download and extract only new\n"
-           "WHDLoad archives. A new reaction GUI may also be introduced\n"
-           "to add more functionality, such as filters.\n");
+    printf("whdfetch is an ongoing hobby project. Future plans include smarter\n"
+           "filtering so you can narrow things down to the versions that best\n"
+           "match your system, plus a ReAction-based GUI to make the growing\n"
+           "number of options easier to manage.  You can follow development and\n"
+           "share feedback at github.com/Kwezza/WHDFetch\n");
     
     /* Show elapsed time and version */
     printf("\nElapsed time: %ld:%02ld:%02ld\n", hours, minutes, seconds);

@@ -184,6 +184,75 @@ BOOL extract_Zip_file_and_rename(const char *zipPath,
     return found;
 }
 
+/* Remove any stale .txt list files for packs that are about to be re-processed.
+ * Collects paths first (scan lock held), releases lock, then deletes — this avoids
+ * disturbing an in-progress ExNext() scan on the same directory. */
+static void purge_stale_dat_txt_files(const struct whdload_pack_def whdload_pack_defs[], int num_packs)
+{
+    BPTR lock;
+    struct FileInfoBlock *fib;
+    char stale_paths[10][260];
+    int stale_count = 0;
+    int k;
+    int i;
+
+    lock = Lock(DIR_DAT_FILES, ACCESS_READ);
+    if (!lock)
+    {
+        return;
+    }
+
+    fib = amiga_malloc(sizeof(struct FileInfoBlock));
+    if (!fib)
+    {
+        UnLock(lock);
+        return;
+    }
+
+    if (Examine(lock, fib))
+    {
+        while (ExNext(lock, fib) && stale_count < 10)
+        {
+            LONG fname_len;
+            const char *fname;
+
+            if (fib->fib_DirEntryType >= 0)
+            {
+                continue;
+            }
+
+            fname = fib->fib_FileName;
+            fname_len = strlen(fname);
+
+            if (fname_len <= 4 || stricmp_custom(fname + fname_len - 4, ".txt") != 0)
+            {
+                continue;
+            }
+
+            for (i = 0; i < num_packs; i++)
+            {
+                if (whdload_pack_defs[i].user_requested_download == 1 &&
+                    whdload_pack_defs[i].updated_dat_downloaded == 1 &&
+                    strstr(fname, whdload_pack_defs[i].filter_dat_files))
+                {
+                    sprintf(stale_paths[stale_count], "%s/%s", DIR_DAT_FILES, fname);
+                    stale_count++;
+                    break;
+                }
+            }
+        }
+    }
+
+    amiga_free(fib);
+    UnLock(lock);
+
+    for (k = 0; k < stale_count; k++)
+    {
+        log_debug(LOG_GENERAL, "dat: removing stale list file '%s'\n", stale_paths[k]);
+        DeleteFile(stale_paths[k]);
+    }
+}
+
 BOOL process_and_archive_WHDLoadDat_Files(struct whdload_pack_def whdload_pack_defs[], int num_packs)
 {
     struct FileInfoBlock *fib;
@@ -194,6 +263,10 @@ BOOL process_and_archive_WHDLoadDat_Files(struct whdload_pack_def whdload_pack_d
     char file_path[256];
     char output_file_path[256];
     int i;
+
+    /* Remove old .txt list files for packs being re-processed so that
+     * get_first_matching_fileName() always finds the fresh filtered version. */
+    purge_stale_dat_txt_files(whdload_pack_defs, num_packs);
 
     directory_lock = Lock(DIR_DAT_FILES, ACCESS_READ);
     if (!directory_lock)

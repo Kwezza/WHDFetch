@@ -125,17 +125,19 @@ void log_effective_configuration(const whdload_pack_def *pack_defs,
     }
 
     log_info(LOG_GENERAL,
-             "config[%s]: options no_skip=%ld verbose=%ld disable_counters=%ld crc_check=%ld extract=%ld extract_only=%ld skip_existing=%ld force_extract=%ld skip_download=%ld force_download=%ld extract_path='%s' delete_archives=%ld purge_archives=%ld skip_aga=%ld skip_cd=%ld skip_ntsc=%ld skip_non_english=%ld use_custom_icons=%ld unsnapshot_icons=%ld\n",
+             "config[%s]: options no_skip=%ld verbose=%ld disable_counters=%ld crc_check=%ld estimate_space=%ld extract=%ld extract_only=%ld skip_existing=%ld force_extract=%ld skip_download=%ld verify_marker=%ld force_download=%ld extract_path='%s' delete_archives=%ld purge_archives=%ld skip_aga=%ld skip_cd=%ld skip_ntsc=%ld skip_non_english=%ld use_custom_icons=%ld unsnapshot_icons=%ld\n",
              stage,
              (long)download_options->no_skip_messages,
              (long)download_options->verbose_output,
              (long)download_options->disable_counters,
              (long)download_options->crc_check,
+             (long)download_options->estimate_space,
              (long)download_options->extract_archives,
              (long)download_options->extract_existing_only,
              (long)download_options->skip_existing_extractions,
              (long)download_options->force_extract,
              (long)download_options->skip_download_if_extracted,
+             (long)download_options->verify_archive_marker_before_download,
              (long)download_options->force_download,
              (download_options->extract_path != NULL) ? download_options->extract_path : "",
              (long)download_options->delete_archives_after_extract,
@@ -237,11 +239,13 @@ BOOL startup_text_and_needed_progs_are_installed(int number_of_args)
             add_line(&tb, "  PURGEARCHIVES/S<ex23>Delete downloaded archives under GameFiles/ recursively");
             add_line(&tb, "");
             add_line(&tb, "<b>Options (optional, choose one or more):</b>");
+            add_line(&tb, "  ESTIMATESPACE/S<ex23>Apply filters and print space estimates without downloading.");
             add_line(&tb, "  NOSKIPREPORT/S<ex23>Don't report skipped existing archives");
             add_line(&tb, "  SKIPAGA/S<ex23>Skip AGA packages");
             add_line(&tb, "  SKIPCD/S<ex23>Skip CDTV/CD32 packages");
             add_line(&tb, "  SKIPNTSC/S<ex23>Skip NTSC packages");
             add_line(&tb, "  SKIPNONENGLISH/S<ex23>Skip non-English packages");
+            add_line(&tb, "  ENABLELOGGING/S<ex23>Enable log file output (disabled by default)");
             add_line(&tb, "  VERBOSE/S<ex23>Show detailed UnZip output (default is quiet)");
             add_line(&tb, "  NOEXTRACT/S<ex23>Disable post-download archive extraction");
             add_line(&tb, "  EXTRACTTO/K<ex23>Extract archives to a separate target path");
@@ -250,6 +254,7 @@ BOOL startup_text_and_needed_progs_are_installed(int number_of_args)
             add_line(&tb, "  EXTRACTONLY/S<ex23>Extract already-downloaded archives only");
             add_line(&tb, "  FORCEEXTRACT/S<ex23>Always extract even when ArchiveName.txt matches");
             add_line(&tb, "  NODOWNLOADSKIP/S<ex23>Disable marker-based pre-download skip");
+            add_line(&tb, "  VERIFYMARKER/S<ex23>Enable ArchiveName.txt verification in pre-download skip");
             add_line(&tb, "  FORCEDOWNLOAD/S<ex23>Always download even when extracted marker matches");
             add_line(&tb, "  DISABLECOUNTERS/S<ex23>Disable queued counters and pre-count pass");
             add_line(&tb, "  CRCCHECK/S<ex23>Enable CRC verification for downloaded archives");
@@ -276,12 +281,13 @@ BOOL startup_text_and_needed_progs_are_installed(int number_of_args)
             add_line(&tb, "</b>  -<ex04>Archive extraction can be configured with NOEXTRACT, EXTRACTTO, KEEPARCHIVES, and DELETEARCHIVES.");
             add_line(&tb, "</b>  -<ex04>PURGEARCHIVES removes downloaded .lha/.lzx files under GameFiles/ after confirmation.");
             add_line(&tb, "</b>  -<ex04>By default, extraction is skipped when ArchiveName.txt line 2 exactly matches the archive filename.");
-            add_line(&tb, "</b>  -<ex04>By default, download is also skipped when an extracted ArchiveName.txt match is found.");
+            add_line(&tb, "</b>  -<ex04>By default, download skip uses .archive_index and folder existence (fast path).");
+            add_line(&tb, "</b>  -<ex04>Use VERIFYMARKER to enable an extra ArchiveName.txt verification pass before download skip.");
             add_line(&tb, "</b>  -<ex04>Use FORCEEXTRACT to bypass the skip check and always re-extract.");
             add_line(&tb, "</b>  -<ex04>Use FORCEDOWNLOAD to bypass pre-download skip and always fetch archives.");
             add_line(&tb, "</b>  -<ex04>Use EXTRACTONLY to process archives that are already present in GameFiles/.");
             add_line(&tb, "</b>  -<ex04>PURGEARCHIVES keeps extracted folders intact; only archive files are deleted.");
-            add_line(&tb, "</b>  -<ex04>For comments and suggestions, please visit the GitHub repository at https://github.com/Kwezza/RetroPlay-WHDLoad-downloader");
+            add_line(&tb, "</b>  -<ex04>For comments and suggestions, please visit the GitHub repository at github.com/Kwezza/WHDFetch");
 
             add_line(&tb, "");
 

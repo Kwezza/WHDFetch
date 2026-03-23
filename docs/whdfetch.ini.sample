@@ -104,6 +104,12 @@ skip_existing_extractions=true
 ; (ArchiveName.txt line 2) exactly matches the archive filename.
 skip_download_if_extracted=true
 
+; Optional extra safety check for pre-download skip logic.
+; Default false (faster): rely on .archive_index plus folder-exists verification.
+; Set true to also verify ArchiveName.txt for skip decisions when checking
+; whether an already-extracted title can be skipped before downloading.
+verify_archive_marker_before_download=false
+
 ; When true, always download archives even if skip_download_if_extracted
 ; would otherwise skip them.
 force_download=false

@@ -128,10 +128,12 @@ typedef struct download_option {
     int download_magazines;
     int no_skip_messages;
     int verbose_output;
+    BOOL enable_logging;
     BOOL extract_archives;
     BOOL skip_existing_extractions;
     BOOL force_extract;
     BOOL skip_download_if_extracted;
+    BOOL verify_archive_marker_before_download;
     BOOL force_download;
     const char *extract_path;
     BOOL delete_archives_after_extract;
@@ -141,6 +143,7 @@ typedef struct download_option {
     BOOL unsnapshot_icons;
     BOOL disable_counters;
     BOOL crc_check;
+    BOOL estimate_space;
     ULONG timeout_seconds;
 } download_option;
 

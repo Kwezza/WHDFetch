@@ -47,7 +47,7 @@ const char *WHDLOAD_FILE_FILTER_ZIP_GAMES_BETA_AND_UNRELEASED = "Games-Beta";
 const char *WHDLOAD_FILE_FILTER_ZIP_GAMES = "Games(";
 const char *WHDLOAD_FILE_FILTER_ZIP_MAGAZINES = "Magazines";
 
-const char *GITHUB_ADDRESS = "https://github.com/Kwezza/Retroplay-WHDLoad-downloader";
+const char *GITHUB_ADDRESS = "github.com/Kwezza/WHDFetch";
 
 const int DEMOS_BETA = 0;
 const int DEMOS = 1;

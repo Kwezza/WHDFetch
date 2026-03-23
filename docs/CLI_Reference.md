@@ -35,6 +35,8 @@ The following command interactions are important:
 * `FORCEEXTRACT` affects extraction only. It does not force re-downloads.
 * `FORCEDOWNLOAD` is stronger than `NODOWNLOADSKIP`. It bypasses both skip layers,
   whereas `NODOWNLOADSKIP` bypasses only the extraction-marker-based pre-download skip.
+* `VERIFYMARKER` enables an additional ArchiveName.txt pre-download verification pass.
+  The default pre-download skip path is index-based for speed.
 
 **Recommended runtime behaviour:** where contradictory commands are supplied, the program
 should ideally warn the user instead of relying silently on parse order.
@@ -344,9 +346,10 @@ whdfetch has two layers of skip logic to avoid redundant work:
 
 1. **Local archive skip:** if the `.lha` file already exists on disk, the download is
    skipped. The existing archive is still passed to the extraction pipeline.
-2. **Extraction marker skip:** if no local `.lha` exists but an `ArchiveName.txt` marker
-   in the extracted game folder matches the archive filename, both the download and
-   extraction are skipped entirely. This uses the `.archive_index` cache for speed.
+2. **Extracted-folder skip:** if no local `.lha` exists but the archive is present in
+  `.archive_index` and the indexed extracted folder still exists, download is skipped.
+3. **Optional marker verification:** when `VERIFYMARKER` is enabled, pre-download skip
+  also verifies `ArchiveName.txt` marker metadata.
 
 The options below control the second layer.
 
@@ -371,6 +374,22 @@ re-extract only the archives that are missing from disk.
 
 ```text
 whdfetch DOWNLOADGAMES NODOWNLOADSKIP
+```
+
+### VERIFYMARKER
+
+Enables an extra pre-download `ArchiveName.txt` verification pass.
+
+By default, pre-download skip uses `.archive_index` plus folder-exists checks for speed,
+which is significantly faster on slower real Amiga hardware when processing very large lists.
+With `VERIFYMARKER`, whdfetch also reads marker metadata before deciding to skip.
+
+Use this when you want stricter marker validation and are willing to trade speed for it.
+
+**Example:**
+
+```text
+whdfetch DOWNLOADGAMES VERIFYMARKER
 ```
 
 ### FORCEDOWNLOAD
@@ -402,6 +421,11 @@ whdfetch DOWNLOADGAMES FORCEDOWNLOAD
 ```text
 whdfetch DOWNLOADGAMES FORCEDOWNLOAD FORCEEXTRACT
 ```
+
+### INI Equivalent
+
+`[global] verify_archive_marker_before_download=true|false` controls the same behavior
+persistently in `whdfetch.ini`. CLI `VERIFYMARKER` overrides it for the current run.
 
 ---
 
@@ -522,12 +546,27 @@ Suppresses on-screen messages printed when existing archives are skipped. During
 large update runs where many archives are already present or already extracted,
 this keeps console output cleaner.
 
-Skip events are still counted in final summary statistics and remain in log files.
+Skip events are still counted in final summary statistics. If `ENABLELOGGING` is
+active, they are also written to log files.
 
 **Example:**
 
 ```text
 whdfetch DOWNLOADALL NOSKIPREPORT
+```
+
+### ENABLELOGGING
+
+Enables file-based logging for the current run.
+
+By default, logging is disabled to reduce disk I/O overhead on slower original
+Amiga hardware. When enabled, whdfetch writes category logs to `PROGDIR:logs/`
+(for example: `general_*.log`, `download_*.log`, and `errors_*.log`).
+
+**Example:**
+
+```text
+whdfetch DOWNLOADGAMES ENABLELOGGING
 ```
 
 ### VERBOSE
@@ -571,6 +610,56 @@ Default is off.
 
 ```text
 whdfetch DOWNLOADGAMES CRCCHECK
+```
+
+---
+
+## Disk Space Estimation
+
+### ESTIMATESPACE
+
+Downloads (or reuses cached) DAT files for the selected packs, totals up the archive
+sizes for all entries that pass the active filters, and prints a per-pack and combined
+disk space summary. No ROM archives are downloaded and no extraction runs.
+
+Because the DAT metadata records compressed archive sizes, the displayed archive figure
+is exact (based on DAT data). The extracted size cannot be predicted per-title, so
+whdfetch estimates it at **1.5× the archive size** as a rough guide.
+
+Output per selected pack:
+
+- **Archive size** — total compressed `.lha`/`.lzx` size for entries passing filters.
+- **Extracted (estimate)** — rough estimate at 1.5× the archive size.
+
+A single combined total follows the per-pack rows. If you intend to keep the archives
+alongside the extracted games (`KEEPARCHIVES`), the total storage required for both is
+also shown.
+
+**Behaviour notes:**
+
+- If no pack-selection command is given with `ESTIMATESPACE`, all five packs are
+  estimated automatically.
+- All active filter flags (`SKIPAGA`, `SKIPCD`, `SKIPNTSC`, `SKIPNONENGLISH`) apply
+  normally — only entries that would pass those filters are counted.
+- `c:lha` does not need to be installed; the extraction-tool check is skipped.
+- No session report is written to `PROGDIR:updates/`.
+
+**Example — estimate all packs:**
+
+```text
+whdfetch ESTIMATESPACE
+```
+
+**Example — estimate Games pack only, excluding AGA titles:**
+
+```text
+whdfetch DOWNLOADGAMES ESTIMATESPACE SKIPAGA
+```
+
+**Example — full OCS/ECS PAL English estimate:**
+
+```text
+whdfetch ESTIMATESPACE SKIPAGA SKIPCD SKIPNTSC SKIPNONENGLISH
 ```
 
 ---
@@ -665,6 +754,7 @@ In short, CLI pack-selection commands are authoritative whenever at least one is
 | NOICONS           | `use_custom_icons=false`              | `[global]`          | Also disables unsnapshotting   |
 | DISABLECOUNTERS   | `disable_counters=true`               | `[global]`          | Disables current and future counters |
 | NOSKIPREPORT      | no INI equivalent                     | —                   | Suppresses skip-message console output |
+| ENABLELOGGING     | no INI equivalent                     | —                   | Enables log files for this run only    |
 | CRCCHECK          | `crccheck=true`                       | `[global]`          | Enables archive CRC verification |
 | TIMEOUT=<seconds> | `timeout_seconds=<seconds>`           | `[global]`          | Range 5-60 seconds, CLI overrides INI |
 | SKIPAGA           | `skip_aga=true`                       | `[filters]`         | Filter                         |
@@ -694,6 +784,7 @@ are internal behaviour flags shown for completeness.
 | `unsnapshot_icons`              | `TRUE`                                      |
 | `disable_counters`              | `FALSE`                                     |
 | `crc_check`                     | `FALSE`                                     |
+| `enable_logging`                | `FALSE` (logging disabled by default)       |
 | `skip_aga`                      | `0` (disabled)                              |
 | `skip_cd`                       | `0` (disabled)                              |
 | `skip_ntsc`                     | `0` (disabled)                              |

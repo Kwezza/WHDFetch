@@ -2051,7 +2051,8 @@ BOOL extract_is_archive_already_extracted(const char *archive_path,
         return FALSE;
     }
 
-    if (extract_derive_game_folder_name(archive_filename,
+    if (download_options->verify_archive_marker_before_download == TRUE &&
+        extract_derive_game_folder_name(archive_filename,
                                         heuristic_folder_name,
                                         sizeof(heuristic_folder_name)))
     {
@@ -2118,6 +2119,11 @@ BOOL extract_is_archive_already_extracted(const char *archive_path,
             }
         }
 
+        return FALSE;
+    }
+
+    if (download_options->verify_archive_marker_before_download == FALSE)
+    {
         return FALSE;
     }
 
@@ -2208,7 +2214,7 @@ LONG extract_process_downloaded_archive(const char *archive_path,
                 log_info(LOG_GENERAL,
                          "extract: skipped '%s' because ArchiveName.txt already matches\n",
                          archive_filename);
-                printf("Skipped extraction for '%s' (ArchiveName.txt match).\n", archive_filename);
+                printf("Skip extract (same archive): %s\n", archive_filename);
                 return EXTRACT_RESULT_OK;
             }
 

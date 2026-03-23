@@ -15,10 +15,12 @@ void setup_app_defaults(struct whdload_pack_def WHDLoadPackDefs[],
         downloadOptions->download_all = 0;
         downloadOptions->no_skip_messages = 0;
         downloadOptions->verbose_output = 0;
+        downloadOptions->enable_logging = FALSE;
         downloadOptions->extract_archives = TRUE;
         downloadOptions->skip_existing_extractions = TRUE;
         downloadOptions->force_extract = FALSE;
         downloadOptions->skip_download_if_extracted = TRUE;
+        downloadOptions->verify_archive_marker_before_download = FALSE;
         downloadOptions->force_download = FALSE;
         downloadOptions->extract_path = NULL;
         downloadOptions->delete_archives_after_extract = TRUE;
@@ -28,6 +30,7 @@ void setup_app_defaults(struct whdload_pack_def WHDLoadPackDefs[],
         downloadOptions->unsnapshot_icons = TRUE;
         downloadOptions->disable_counters = FALSE;
         downloadOptions->crc_check = FALSE;
+        downloadOptions->estimate_space = FALSE;
         downloadOptions->timeout_seconds = 30;
     }
 
