@@ -25,6 +25,7 @@ This program helps you set up an internet-connected Amiga with the latest WHDLoa
 15. [Session Reports](#session-reports)
 16. [Skip Detection and Caching](#skip-detection-and-caching)
 17. [Tips & Troubleshooting](#tips--troubleshooting)
+18. [Command Summary](#command-summary)
 
 ---
 
@@ -37,6 +38,7 @@ This program helps you set up an internet-connected Amiga with the latest WHDLoa
 - `c:unlzx` — optional; required for `.lzx` archive extraction. If not installed, `.lzx` archives are skipped with a warning and the run continues. Aminet: TBC
 - Fast RAM recommended — Should work with at least 2 MB of memory, but more is better.
 - Enough hard drive space to store all the files. A more modern file system, such as PFS, is recommended, as the extracted archives can easily exceed the 4GB limit.
+- A working install of WHDLoad (download and install WHDLoad_usr.lha from www.whdload.de).  Some packs may need the Amiga kickstarts installed into Devs:kickstart drawer, which you can purchase from www.amigaforever.com
 
 ---
 
@@ -44,7 +46,7 @@ This program helps you set up an internet-connected Amiga with the latest WHDLoa
 
 After rebuilding my Amiga, I found downloading and extracting all the latest WHDLoad packs took a lot of time. This program simplifies that by downloading the newest packs from RetroPlay and the archives from the Turran server. You can choose one or more packs, such as Games or Demos, and apply simple filters by chipset, language, CD, and more. It extracts archives directly to a folder you pick, creating a clear file path (for example, “Games/A/A10TankKiller3Disk”) with custom or default icons. You can also choose to keep or delete the downloaded archive after extraction. Running the program again on the same folder will check for new or updated items and download only what’s needed.
 
-If you like, the program can verify the downloaded archive’s CRC against the server’s to ensure the download was successful. Extracting archives directly on the Amiga, real or emulated, is the only way I know to preserve special file metadata and attributes correctly. That’s why I created this tool.
+If you like, the program can verify the downloaded archive’s CRC against the server’s to ensure the download was successful. Also, extracting archives directly on the Amiga, real or emulated, is the only way I know to preserve special file metadata and attributes correctly. 
 
 Right now, this program works only through the command line. You can use an optional .ini file to set default options and update filters or URLs if they change later.
 
@@ -172,7 +174,7 @@ If your machine can’t run some titles (like AGA), applying filters first can s
 If you want to keep the downloaded archives as a backup, use this:
 
 ```text
-whdfetch DOWNLOADGAMES KEEPARCHIVES EXTRACTTO Work:WHDLoad/
+whdfetch DOWNLOADGAMES KEEPARCHIVES EXTRACTTO=Work:WHDLoad/
 ```
 
 Kept archives also act as a local cache. If a later command needs the same archive again, `whdfetch` can reuse the copy already stored in `GameFiles` instead of downloading it again, provided it is still present and up to date.
@@ -189,14 +191,14 @@ Be aware that keeping archives requires significantly more disk space, as both t
 
 A whdfetch run follows a set sequence of steps for each selected pack:
 
-1. **Fetch the index.** The program downloads `index.html` from the Retroplay FTP site and scans it for links that match the expected pack filename pattern.
+1. **Fetch the index.** The program downloads `index.html` from the Turran FTP site and scans it for links that match the expected pack filename pattern.
 2. **Download the pack ZIP.** Each matching pack link is a ZIP file containing a DAT (XML) file listing every archive in that pack, including filenames, sizes, and CRC values. The ZIP is downloaded to `temp/Zip files/` and extracted to `temp/Dat files/`.
 3. **Parse the DAT file.** Every `<rom name="...">` entry in the XML is parsed. The filename is decoded to extract metadata: title, version, chipset requirement, video format, language codes, media type, and number of disks. Active filters are applied at this stage.
 4. **Process each entry.** For every archive that passes the filters, whdfetch checks if it's already present and up to date using the `.archive_index` cache. If enabled, it can also verify `ArchiveName.txt` markers before skipping a download. If the archive needs downloading, it fetches it from the Retroplay FTP server directly to `GameFiles/<pack>/<letter>/`.
 5. **Extract.** If extraction is enabled (the default), the archive is processed with `c:lha` or `c:unlzx`. An `ArchiveName.txt` marker is written inside the extracted folder. Optional icon replacement happens afterward.
 6. **Report.** At the end of the run, per-pack statistics are printed to the console, and a full session report is saved to `PROGDIR:updates/updates_YYYY-MM-DD_HH-MM-SS.txt`.
 
-The `.archive_index` cache is updated in memory during the run and saved to disk on clean exit. Stale entries pointing to folders that no longer exist are automatically removed each time it's saved.
+A whdfetch.ini file can be configured with the exact path to the website and other HTML filtering options to locate each pack. This configuration allows whdfetch to be updated without recompilation if the paths change in the future.
 
 ---
 
@@ -406,6 +408,12 @@ whdfetch has two primary layers of skip logic, plus an optional verification lay
 2. **Extracted-folder skip** — if no local archive exists, but `.archive_index` contains the archive and the indexed extracted folder still exists, download is skipped.
 3. **Optional marker verification** — with `VERIFYMARKER`, whdfetch also verifies `ArchiveName.txt` metadata before pre-download skip.
 
+**About `.archive_index`:** Each letter directory under `GameFiles/<pack>/<letter>/` contains a index file called `.archive_index`. This file records which archives have already been extracted, mapping each archive filename to the folder name it was extracted into. whdfetch writes and maintains this index automatically. It exists because scanning extracted folders on real Amiga hardware — opening every subdirectory and reading its marker file — is extremely slow. The index is a fast lookup table that avoids that entirely.
+
+**About `ArchiveName.txt`:** Each extracted game folder gets a small text file called `ArchiveName.txt` added to it. The first line is the pack category name (for example `Games`) and the second line is the exact archive filename that was extracted into that folder (for example `Academy_v1.2.lha`). This file is written by whdfetch after each successful extraction. It lets whdfetch confirm, when it encounters an archive on a subsequent run, that the folder it finds really does contain that archive and not some other version.
+
+**Why the double check matters:** The `.archive_index` is fast but it only records what was true at the time whdfetch last ran. If you manually moved, renamed, or deleted an extracted game folder since then, the index still shows it as present. The optional `VERIFYMARKER` check reads `ArchiveName.txt` directly from disk to confirm the folder still exists and still contains the right archive before deciding to skip a download. Without this extra step, whdfetch trusts the index alone, which is faster but can lead to a skip being wrongly applied if the folder has since been removed or its contents changed.
+
 The options below control the second layer.
 
 ---
@@ -557,7 +565,7 @@ whdfetch DOWNLOADALL DISABLECOUNTERS
 
 ### CRCCHECK
 
-Enables CRC verification for downloaded archives using CRC values from the DAT metadata. When a mismatch is detected, the download is retried within the configured retry budget.
+Enables CRC verification for downloaded archives using CRC values from the DAT metadata. When a mismatch is detected, the download is retried up to 3 times.
 
 CRC checking is off by default for the fastest operation. Enable it when you suspect a connection is introducing corruption, or after a run with many unexplained extraction failures.
 
@@ -673,15 +681,15 @@ Note: Check that the icon is set to type "Drawer"; otherwise, you may not be abl
 
 ### WHDLoad game folder icons
 
-WHDLoad archives typically include their own `.info` sidecar next to the game folder. After successful extraction, whdfetch can replace this icon with a consistent template from `PROGDIR:Icons/WHD folder.info`. The replacement handles write-protected icons gracefully.
+WHDLoad archives typically include their own folder icon as part of the archive. After successful extraction, whdfetch can replace this icon with a consistent template from `PROGDIR:Icons/WHD folder.info`. Note: This replacement handles write-protected icons by skipping them.
 
 Replaced icons are automatically unsnapshotted, so saved Workbench X/Y positions are cleared. This prevents icons from stacking at the same screen coordinates when viewed in Workbench.
+
+Shamless plug:> Check out iTidy and iTidy2 on Aminet for a tool to clean icons across multiple folders :)
 
 ### NOICONS
 
 Disables all custom icon handling. The extraction pipeline will not apply icons from `PROGDIR:Icons/`. System default drawer icons may still be created by AmigaOS if a folder has no icon at all, but nothing from `PROGDIR:Icons/` is used. Icon unsnapshotting is also skipped.
-
-Use this when running in a headless configuration, when icons are irrelevant.
 
 ```
 whdfetch DOWNLOADGAMES NOICONS
@@ -697,7 +705,7 @@ whdfetch DOWNLOADGAMES NOICONS
 
 CLI arguments always win. For example, if the INI has `delete_archives_after_extract=false` but you pass `DELETEARCHIVES` on the command line, archives will be deleted.
 
-A fully annotated sample file is provided at `docs/whdfetch.ini.sample`.
+A fully commented sample file is provided in the whdfetch achive called `whdfetch.ini.sample`.  Rename it to `whdfetch.ini` start using it
 
 ---
 
@@ -791,7 +799,7 @@ In short: if you name a pack on the command line, INI pack settings are set asid
 | `NOICONS`           | `use_custom_icons=false`                     | `[global]`          |
 | `DISABLECOUNTERS`   | `disable_counters=true`                      | `[global]`          |
 | `CRCCHECK`          | `crccheck=true`                              | `[global]`          |
-| `ENABLELOGGING`     | _none (CLI only)_                            | n/a                 |
+| `ENABLELOGGING`     |  none (CLI only)                             | n/a                 |
 | `TIMEOUT=<seconds>` | `timeout_seconds=<seconds>`                  | `[global]`          |
 | `SKIPAGA`           | `skip_aga=true`                              | `[filters]`         |
 | `SKIPCD`            | `skip_cd=true`                               | `[filters]`         |
@@ -858,7 +866,7 @@ If line two of this file matches the archive filename being processed, extractio
 
 ### Incomplete download recovery (`.downloading`)
 
-Before each download begins, an empty marker file is created alongside the archive:
+Before each download begins, an empty marker file is created alongside the archive.  For example:
 
 ```
 GameFiles/Games/A/Academy_v1.2.lha.downloading
@@ -912,6 +920,7 @@ Make sure `bsdsocket.library` is available and that Roadshow is running. Also, c
 | ------------------- | ------------------------------------------------------------------ |
 | `DOWNLOADGAMES`     | Select the Games pack                                              |
 | `DOWNLOADBETAGAMES` | Select the Games Beta pack                                         |
+| `ESTIMATESPACE`     | Estimate disk space needed without downloading anything            |
 | `DOWNLOADDEMOS`     | Select the Demos pack                                              |
 | `DOWNLOADBETADEMOS` | Select the Demos Beta pack                                         |
 | `DOWNLOADMAGS`      | Select the Magazines pack                                          |
