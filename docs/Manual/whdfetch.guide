@@ -1,0 +1,1585 @@
+@DATABASE "Manual-Clean"
+@INDEX MAIN
+
+@NODE MAIN "whdfetch"
+@NEXT REQUIREMENTS
+
+@{APEN 2}@{B}whdfetch@{UB}@{APEN 1}
+========
+
+@{B}A Retroplay WHDLoad Archive Downloader and Installer for AmigaOS 3.0+@{UB}
+
+This program helps you set up an internet-connected Amiga with the latest
+WHDLoad games, demos, and magazines from Retroplay's collection on the
+Turran server. You can select packs, apply basic filters, and run it again
+later to update your collection by automatically finding new or updated
+releases.
+
+--------------------------------------------------------------------------
+
+ @{" Requirements                " LINK REQUIREMENTS}
+ @{" Introduction                " LINK INTRODUCTION}
+ @{" Getting Started             " LINK GETTING_STARTED}
+ @{" How It Works                " LINK HOW_IT_WORKS}
+ @{" Pack Selection              " LINK PACK_SELECTION}
+ @{" Extraction Options          " LINK EXTRACTION_OPTIONS}
+ @{" Download Skip Options       " LINK DOWNLOAD_SKIP_OPTIONS}
+ @{" Filter Options              " LINK FILTER_OPTIONS}
+ @{" Output and Reporting        " LINK OUTPUT_AND_REPORTING}
+ @{" Disk Space Estimation       " LINK DISK_SPACE_ESTIMATION}
+ @{" Maintenance Commands        " LINK MAINTENANCE_COMMANDS}
+ @{" Connection Settings         " LINK CONNECTION_SETTINGS}
+ @{" Icon Handling               " LINK ICON_HANDLING}
+ @{" INI File Configuration      " LINK INI_FILE_CONFIGURATION}
+ @{" Session Reports             " LINK SESSION_REPORTS}
+ @{" Skip Detection and Caching  " LINK SKIP_DETECTION_AND_CACHING}
+ @{" Tips & Troubleshooting      " LINK TIPS_TROUBLESHOOTING}
+ @{" Command Summary             " LINK TIPS_TROUBLESHOOTING}
+
+--------------------------------------------------------------------------
+
+
+@ENDNODE
+
+@NODE REQUIREMENTS "Requirements"
+@PREV MAIN
+@NEXT INTRODUCTION
+@TOC MAIN
+
+@{APEN 2}@{B}Requirements@{UB}@{APEN 1}
+============
+
+- AmigaOS 3.0 or newer (3.1 or later recommended)
+- TCP/IP stack ("bsdsocket.library v4" or higher) - required for all
+  network operations
+- "c:unzip" - required to extract the DAT files. Available on Aminet:
+  util/arc/UnZip.lha
+- "c:lha" - required for ".lha" archive extraction. Available on Aminet:
+  util/arc/lha
+- "c:unlzx" - optional; required for ".lzx" archive extraction. If not
+  installed, ".lzx" archives are skipped with a warning and the run
+  continues. Aminet: TBC
+- Fast RAM recommended - Should work with at least 2 MB of memory, but
+  more is better.
+- Enough hard drive space to store all the files. A more modern file
+  system, such as PFS, is recommended, as the extracted archives can
+  easily exceed the 4GB limit.
+- A working install of WHDLoad (download and install WHDLoad_usr.lha
+  from www.whdload.de).  Some packs may need the Amiga kickstarts
+  installed into Devs:kickstart drawer, which you can purchase from
+  www.amigaforever.com
+
+--------------------------------------------------------------------------
+
+
+@{"  Return to Contents  " LINK MAIN}
+
+@ENDNODE
+
+@NODE INTRODUCTION "Introduction"
+@PREV REQUIREMENTS
+@NEXT GETTING_STARTED
+@TOC MAIN
+
+@{APEN 2}@{B}Introduction@{UB}@{APEN 1}
+============
+
+After rebuilding my Amiga, I found downloading and extracting all the
+latest WHDLoad packs took a lot of time. This program simplifies that by
+downloading the newest packs from RetroPlay and the archives from the
+Turran server. You can choose one or more packs, such as Games or Demos,
+and apply simple filters by chipset, language, CD, and more. It extracts
+archives directly to a folder you pick, creating a clear file path (for
+example, "Games/A/A10TankKiller3Disk") with custom or default icons. You
+can also choose to keep or delete the downloaded archive after extraction.
+Running the program again on the same folder will check for new or updated
+items and download only what's needed.
+
+If you like, the program can verify the downloaded archive's CRC against
+the server's to ensure the download was successful. Also, extracting
+archives directly on the Amiga, real or emulated, is the only way I know
+to preserve special file metadata and attributes correctly.
+
+Right now, this program works only through the command line. You can use
+an optional .ini file to set default options and update filters or URLs if
+they change later.
+
+--------------------------------------------------------------------------
+
+
+@{"  Return to Contents  " LINK MAIN}
+
+@ENDNODE
+
+@NODE GETTING_STARTED "Getting Started"
+@PREV INTRODUCTION
+@NEXT HOW_IT_WORKS
+@TOC MAIN
+
+@{APEN 2}@{B}Getting Started@{UB}@{APEN 1}
+===============
+
+"whdfetch" lets you download and extract WHDLoad packs right on your
+Amiga. Before you start a big download, it's a good idea to check how much
+disk space you'll need. This is especially important on real Amiga
+systems, where storage needs can be bigger than you might think.
+
+
+@{APEN 2}1. COPY THE PROGRAM FILES@{APEN 1}
+-------------------------
+
+Copy "whdfetch" to a folder on your Amiga. If you want to use a custom
+setup, copy "whdfetch.ini" to the same folder. If you don't include
+"whdfetch.ini", the program will use its default settings.
+
+
+@{APEN 2}2. ENSURE INTERNET ACCESS IS WORKING@{APEN 1}
+------------------------------------
+
+Your Amiga must already be connected to the internet before running
+whdfetch.
+
+I use Roadshow for my TCP/IP stack, but "whdfetch" has also been tested
+well with the emulated "bsdsocket.library" under WinUAE. Other TCP/IP
+stacks should work too, as long as your Amiga can access the internet.
+
+
+@{APEN 2}3. OPEN A SHELL@{APEN 1}
+---------------
+
+Open a Shell and change to the directory where you placed "whdfetch".
+
+
+@{APEN 2}4. CHECK THE REQUIRED DISK SPACE FIRST@{APEN 1}
+--------------------------------------
+
+Before you download anything, run this command:
+
+@{CODE}
+  whdfetch ESTIMATESPACE
+@{BODY}
+
+This command downloads the latest DAT files, checks the archive sizes, and
+shows you an estimate of the disk space each pack will need.
+
+It shows:
+
+- the total archive size
+- a rough estimate of extracted size
+- the combined space needed if you keep both archives and extracted
+  files
+
+This is the safest first command for new users, as it lets you see the
+storage requirements before committing to a long download.
+
+This is the safest first step for new users because it lets you check
+storage needs before starting a long download.
+
+Note that downloaded archives are stored in a GameFiles directory created
+in the same location from which "whdfetch" is run. Extracted files can be
+redirected elsewhere with "EXTRACTTO", but the downloaded archives still
+need space on the drive where "whdfetch" is being run. For this reason,
+checking free space before starting is very important.
+
+Usually, the full collection needs many gigabytes of free space,
+especially if you choose to keep the archives with "KEEPARCHIVES".
+
+
+@{APEN 2}5. DECIDE WHERE EXTRACTED FILES SHOULD GO@{APEN 1}
+-----------------------------------------
+
+Before you start a real download, decide where you want the extracted
+files to go.
+
+Use "EXTRACTTO" to pick the destination folder. "whdfetch" will
+automatically create the right folder structure inside it.
+
+For example:
+
+@{CODE}
+  whdfetch DOWNLOADBETADEMOS EXTRACTTO Work:WHDLoad/
+@{BODY}
+
+Here, the extracted files go under Work:WHDLoad/ instead of the program
+folder.
+
+whdfetch creates the needed subfolders automatically. This keeps your
+downloaded pack organised without you having to set up the folder tree
+yourself.
+
+
+@{APEN 2}6. APPLY FILTERS IF NEEDED@{APEN 1}
+--------------------------
+
+"ESTIMATESPACE" also works with the usual filters, so you can get a space
+estimate that fits your setup better.
+
+For example:
+
+@{CODE}
+  whdfetch ESTIMATESPACE SKIPAGA SKIPCD SKIPNTSC SKIPNONENGLISH
+@{BODY}
+
+This gives a more realistic estimate if you're using a non-AGA, PAL,
+English-language setup.
+
+
+@{APEN 2}7. TRY A SMALL REAL DOWNLOAD@{APEN 1}
+----------------------------
+
+Once you're sure you have enough disk space, try a small test download to
+your chosen extraction folder:
+
+@{CODE}
+  whdfetch DOWNLOADBETADEMOS EXTRACTTO Work:WHDLoad/
+@{BODY}
+
+This is a good first test since it's a very small pack. It helps you check
+that downloading, extracting, folder creation, and reporting all work on
+your system without needing a long overnight run.
+
+
+@{APEN 2}8. CHECK THE RESULTS@{APEN 1}
+--------------------
+
+When the run finishes, "whdfetch" shows a summary with totals for:
+
+- new downloads
+- skipped titles
+- extraction results
+
+It also saves a session report to:
+
+@{CODE}
+  PROGDIR:updates/
+@{BODY}
+
+
+@{APEN 2}9. MOVE ON TO THE MAIN PACKS@{APEN 1}
+----------------------------
+
+Once everything works as expected, you can try one of the bigger packs
+like:
+
+@{CODE}
+  whdfetch DOWNLOADGAMES EXTRACTTO Work:WHDLoad/
+@{BODY}
+
+"DOWNLOADGAMES" is the biggest pack and can take many hours on a real
+Amiga. It's usually best to let it run overnight once you're sure
+everything is working right.
+
+
+@{APEN 2}TIPS@{APEN 1}
+----
+
+@{B}Always estimate first.@{UB} Run "ESTIMATESPACE" before any big download,
+especially if your hard disk space is limited.
+
+@{B}Keep in mind where archives are saved.@{UB} Downloaded archives go into the
+GameFiles folder created where you run "whdfetch". Even if you use
+"EXTRACTTO", the drive with "whdfetch" still needs enough free space for
+the archives.
+
+@{B}Pick your extraction destination from the start.@{UB} Using "EXTRACTTO" right
+away helps keep extracted files on the right drive and shows you where new
+folders will be created.
+
+@{B}Use filters.@{UB} If your machine can't run some titles (like AGA), applying
+filters first can save download time and disk space.
+
+@{B}By default, archives are deleted after extraction.@{UB} If you want to keep the
+downloaded archives as a backup, use this:
+
+@{CODE}
+  whdfetch DOWNLOADGAMES KEEPARCHIVES EXTRACTTO=Work:WHDLoad/
+@{BODY}
+
+Kept archives also act as a local cache. If a later command needs the same
+archive again, "whdfetch" can reuse the copy already stored in "GameFiles"
+instead of downloading it again, provided it is still present and up to
+date.
+
+@{B}You don't need to keep archives for future updates.@{UB} If you run the same
+pack again on the same extraction folder, "whdfetc" checks tracking files
+inside the folders and skips titles that are already up to date. This lets
+you refresh a Retroplay WHDLoad collection over time without redownloading
+everything.
+
+This works even if you deleted archives after extraction, because metadata
+like .archive_index is saved inside the extraction folders.
+
+Be aware that keeping archives requires significantly more disk space, as
+both the archives and the extracted contents must be stored.
+
+--------------------------------------------------------------------------
+
+
+@{"  Return to Contents  " LINK MAIN}
+
+@ENDNODE
+
+@NODE HOW_IT_WORKS "How It Works"
+@PREV GETTING_STARTED
+@NEXT PACK_SELECTION
+@TOC MAIN
+
+@{APEN 2}@{B}How It Works@{UB}@{APEN 1}
+============
+
+A whdfetch run follows a set sequence of steps for each selected pack:
+
+1. @{B}Fetch the index.@{UB} The program downloads "index.html" from the Turran
+   FTP site and scans it for links that match the expected pack filename
+   pattern.
+2. @{B}Download the pack ZIP.@{UB} Each matching pack link is a ZIP file
+   containing a DAT (XML) file listing every archive in that pack,
+   including filenames, sizes, and CRC values. The ZIP is downloaded to
+   "temp/Zip files/" and extracted to "temp/Dat files/".
+3. @{B}Parse the DAT file.@{UB} Every "<rom name="...">" entry in the XML is
+   parsed. The filename is decoded to extract metadata: title, version,
+   chipset requirement, video format, language codes, media type, and
+   number of disks. Active filters are applied at this stage.
+4. @{B}Process each entry.@{UB} For every archive that passes the filters,
+   whdfetch checks if it's already present and up to date using the
+   ".archive_index" cache. If enabled, it can also verify
+   "ArchiveName.txt" markers before skipping a download. If the archive
+   needs downloading, it fetches it from the Retroplay FTP server
+   directly to "GameFiles/<pack>/<letter>/".
+5. @{B}Extract.@{UB} If extraction is enabled (the default), the archive is
+   processed with "c:lha" or "c:unlzx". An "ArchiveName.txt" marker is
+   written inside the extracted folder. Optional icon replacement
+   happens afterward.
+6. @{B}Report.@{UB} At the end of the run, per-pack statistics are printed to the
+   console, and a full session report is saved to
+   "PROGDIR:updates/updates_YYYY-MM-DD_HH-MM-SS.txt".
+
+A whdfetch.ini file can be configured with the exact path to the website
+and other HTML filtering options to locate each pack. This configuration
+allows whdfetch to be updated without recompilation if the paths change in
+the future.
+
+--------------------------------------------------------------------------
+
+
+@{"  Return to Contents  " LINK MAIN}
+
+@ENDNODE
+
+@NODE PACK_SELECTION "Pack Selection"
+@PREV HOW_IT_WORKS
+@NEXT EXTRACTION_OPTIONS
+@TOC MAIN
+
+@{APEN 2}@{B}Pack Selection@{UB}@{APEN 1}
+==============
+
+whdfetch organises the Retroplay collection into five packs. You must
+select at least one pack per run using a CLI command or via the INI file.
+Running whdfetch with no pack selected and no other arguments displays the
+built-in help screen.
+
+If any CLI pack-selection command is present, it overrides all pack
+selections in the INI file for that run.
+
+@{B}General syntax:@{UB}
+
+@{CODE}
+  whdfetch [COMMAND...] [OPTION...]
+@{BODY}
+
+Arguments are case-insensitive and can be given in any order.
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}DOWNLOADGAMES@{APEN 1}
+-------------
+
+Selects the @{B}Games@{UB} pack. Archives are downloaded and extracted to
+"GameFiles/Games/<letter>/".
+
+@{CODE}
+  whdfetch DOWNLOADGAMES
+@{BODY}
+
+
+@{APEN 2}DOWNLOADBETAGAMES@{APEN 1}
+-----------------
+
+Selects the @{B}Games (Beta & Unofficial)@{UB} pack. These are WHDLoad game
+conversions that are still in development or were produced by unofficial
+sources. Archives go to "GameFiles/Games Beta/<letter>/".
+
+@{CODE}
+  whdfetch DOWNLOADBETAGAMES
+@{BODY}
+
+
+@{APEN 2}DOWNLOADDEMOS@{APEN 1}
+-------------
+
+Selects the @{B}Demos@{UB} pack. Archives go to "GameFiles/Demos/<letter>/".
+
+@{CODE}
+  whdfetch DOWNLOADDEMOS
+@{BODY}
+
+
+@{APEN 2}DOWNLOADBETADEMOS@{APEN 1}
+-----------------
+
+Selects the @{B}Demos (Beta & Unofficial)@{UB} pack. Archives go to
+"GameFiles/Demos Beta/<letter>/".
+
+@{CODE}
+  whdfetch DOWNLOADBETADEMOS
+@{BODY}
+
+
+@{APEN 2}DOWNLOADMAGS@{APEN 1}
+------------
+
+Selects the @{B}Magazines@{UB} pack. Archives go to
+"GameFiles/Magazines/<letter>/".
+
+@{CODE}
+  whdfetch DOWNLOADMAGS
+@{BODY}
+
+
+@{APEN 2}DOWNLOADALL@{APEN 1}
+-----------
+
+Selects all five packs at once. Equivalent to specifying each pack-
+selection command individually.
+
+@{CODE}
+  whdfetch DOWNLOADALL
+@{BODY}
+
+
+@{APEN 2}HELP@{APEN 1}
+----
+
+Prints the built-in usage screen and exits immediately without performing
+any downloads or extraction.
+
+@{CODE}
+  whdfetch HELP
+@{BODY}
+
+--------------------------------------------------------------------------
+
+
+@{"  Return to Contents  " LINK MAIN}
+
+@ENDNODE
+
+@NODE EXTRACTION_OPTIONS "Extraction Options"
+@PREV PACK_SELECTION
+@NEXT DOWNLOAD_SKIP_OPTIONS
+@TOC MAIN
+
+@{APEN 2}@{B}Extraction Options@{UB}@{APEN 1}
+==================
+
+By default, whdfetch extracts each archive immediately after downloading
+it. The extraction pipeline:
+
+1. Runs "c:lha" for ".lha" archives, or "c:unlzx" for ".lzx" archives
+2. Writes an "ArchiveName.txt" marker inside the extracted game folder
+3. Applies custom drawer icons if available in "PROGDIR:Icons/"
+4. Updates the ".archive_index" cache
+5. Optionally deletes the archive file
+
+The options below control how the extraction pipeline behaves.
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}EXTRACTONLY@{APEN 1}
+-----------
+
+Processes only archives that are already present on disk in
+"GameFiles/<pack>/<letter>/". Nothing is downloaded from the server.
+
+This is intended for situations where you have previously fetched archives
+using "NOEXTRACT" and now want to extract them. The program reads the
+existing DAT list files from "temp/Dat files/", checks each entry against
+disk, and runs extraction on archives it finds.
+
+When "EXTRACTONLY" is active, extraction is forced on regardless of any
+other setting. If "NOEXTRACT" is also given, it is ignored.
+
+@{CODE}
+  whdfetch DOWNLOADGAMES EXTRACTONLY
+@{BODY}
+
+Extracting all packs to an external volume:
+
+@{CODE}
+  whdfetch DOWNLOADALL EXTRACTONLY EXTRACTTO=Games:
+@{BODY}
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}NOEXTRACT@{APEN 1}
+---------
+
+Disables the extraction pipeline entirely. Archives are downloaded and
+left as ".lha" or ".lzx" files. No extractor is called, no
+"ArchiveName.txt" is written, and no icons are applied.
+
+This is useful for downloading a large batch now and extracting later, or
+when you want to use an external extraction tool. Because extraction is
+skipped, startup validation of extraction tools is also skipped, so the
+program runs even if "c:lha" is not installed.
+
+Pre-download skip logic still works normally. By default, this uses
+".archive_index" and folder existence checks. If "VERIFYMARKER" is
+enabled, "ArchiveName.txt" is also verified before pre-download skip.
+
+@{CODE}
+  whdfetch DOWNLOADGAMES NOEXTRACT
+@{BODY}
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}EXTRACTTO=\<PATH\>@{APEN 1}
+------------------
+
+Redirects the extraction output to a different location instead of
+extracting alongside the downloaded archives. The pack and letter
+directory structure is preserved under the given path:
+
+@{CODE}
+  <path>/<pack>/<letter>/<game folder>/
+@{BODY}
+
+For example, "EXTRACTTO=Games:" with the Games pack extracts to
+"Games:Games/A/", "Games:Games/B/", and so on.
+
+The path must already exist and be writable. The program validates this at
+startup and exits with an error if the path is missing or not writable. No
+downloads begin until validation passes.
+
+Setting "EXTRACTTO=" with an empty value clears any active extraction path
+and reverts to in-place extraction.
+
+@{CODE}
+  whdfetch DOWNLOADGAMES EXTRACTTO=Games:
+@{BODY}
+
+Extracting all packs to a separate partition:
+
+@{CODE}
+  whdfetch DOWNLOADALL EXTRACTTO=Work:WHDLoad/
+@{BODY}
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}KEEPARCHIVES@{APEN 1}
+------------
+
+Keeps archive files after successful extraction. By default, archives are
+deleted after extraction. This overrides that default and any INI setting.
+
+Useful if you want to maintain a local archive cache alongside the
+extracted games for backup or to re-extract later with different options.
+
+"KEEPARCHIVES" and "DELETEARCHIVES" oppose each other. Only one should be
+used per run.
+
+@{CODE}
+  whdfetch DOWNLOADGAMES KEEPARCHIVES
+@{BODY}
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}DELETEARCHIVES@{APEN 1}
+--------------
+
+Explicitly enables post-extraction archive deletion. This is the compiled
+default, so this command is mainly useful for overriding an INI setting
+that controls whether archives are kept.
+
+If extraction fails for a particular archive, that archive is not deleted.
+Only successfully extracted archives are removed.
+
+"DELETEARCHIVES" has no effect when "NOEXTRACT" is active, since deletion
+occurs only after a successful extraction pass.
+
+@{CODE}
+  whdfetch DOWNLOADGAMES DELETEARCHIVES
+@{BODY}
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}FORCEEXTRACT@{APEN 1}
+------------
+
+Bypasses the "ArchiveName.txt" skip check and re-extracts every archive,
+even when the marker already matches.
+
+Normally, if a game folder contains an "ArchiveName.txt" whose second line
+matches the current archive filename, extraction is skipped.
+"FORCEEXTRACT" disables this check for the current run.
+
+This does not affect the pre-download skip. If the archive has not been
+downloaded and an extracted match is found, the download itself may still
+be skipped unless "FORCEDOWNLOAD" or "NODOWNLOADSKIP" is also used.
+
+Use "FORCEEXTRACT" to reapply updated icons to all game folders, repair a
+suspected incomplete extraction, or re-extract to a new "EXTRACTTO" path.
+
+@{CODE}
+  whdfetch DOWNLOADGAMES FORCEEXTRACT
+@{BODY}
+
+Full rebuild - re-download and re-extract everything:
+
+@{CODE}
+  whdfetch DOWNLOADALL FORCEEXTRACT FORCEDOWNLOAD
+@{BODY}
+
+--------------------------------------------------------------------------
+
+
+@{"  Return to Contents  " LINK MAIN}
+
+@ENDNODE
+
+@NODE DOWNLOAD_SKIP_OPTIONS "Download Skip Options"
+@PREV EXTRACTION_OPTIONS
+@NEXT FILTER_OPTIONS
+@TOC MAIN
+
+@{APEN 2}@{B}Download Skip Options@{UB}@{APEN 1}
+=====================
+
+whdfetch has two primary layers of skip logic, plus an optional
+verification layer:
+
+1. @{B}Local archive skip@{UB} - if the ".lha" or ".lzx" file already exists on
+   disk, the download is skipped, and the existing archive is passed to
+   the extraction pipeline.
+2. @{B}Extracted-folder skip@{UB} - if no local archive exists, but
+   ".archive_index" contains the archive and the indexed extracted
+   folder still exists, download is skipped.
+3. @{B}Optional marker verification@{UB} - with "VERIFYMARKER", whdfetch also
+   verifies "ArchiveName.txt" metadata before pre-download skip.
+
+@{B}About ".archive_index":@{UB} Each letter directory under
+"GameFiles/<pack>/<letter>/" contains a index file called
+".archive_index". This file records which archives have already been
+extracted, mapping each archive filename to the folder name it was
+extracted into. whdfetch writes and maintains this index automatically. It
+exists because scanning extracted folders on real Amiga hardware - opening
+every subdirectory and reading its marker file - is extremely slow. The
+index is a fast lookup table that avoids that entirely.
+
+@{B}About "ArchiveName.txt":@{UB} Each extracted game folder gets a small text file
+called "ArchiveName.txt" added to it. The first line is the pack category
+name (for example "Games") and the second line is the exact archive
+filename that was extracted into that folder (for example
+"Academy_v1.2.lha"). This file is written by whdfetch after each
+successful extraction. It lets whdfetch confirm, when it encounters an
+archive on a subsequent run, that the folder it finds really does contain
+that archive and not some other version.
+
+@{B}Why the double check matters:@{UB} The ".archive_index" is fast but it only
+records what was true at the time whdfetch last ran. If you manually
+moved, renamed, or deleted an extracted game folder since then, the index
+still shows it as present. The optional "VERIFYMARKER" check reads
+"ArchiveName.txt" directly from disk to confirm the folder still exists
+and still contains the right archive before deciding to skip a download.
+Without this extra step, whdfetch trusts the index alone, which is faster
+but can lead to a skip being wrongly applied if the folder has since been
+removed or its contents changed.
+
+The options below control the second layer.
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}NODOWNLOADSKIP@{APEN 1}
+--------------
+
+Disables the extraction-marker-based pre-download skip. When active, every
+archive that does not already exist on disk as a file is downloaded
+regardless of whether a matching "ArchiveName.txt" marker exists.
+
+The local archive file check (layer one) still applies. If the ".lha"
+already exists on disk, the download is skipped.
+
+@{B}Use case:@{UB} you have deleted some extracted game folders and want to
+re-download and re-extract only the archives that are missing.
+
+@{CODE}
+  whdfetch DOWNLOADGAMES NODOWNLOADSKIP
+@{BODY}
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}VERIFYMARKER@{APEN 1}
+------------
+
+Enables an extra pre-download "ArchiveName.txt" verification pass.
+
+By default, pre-download skip uses ".archive_index" plus folder-exists
+checks for speed. On slower real Amiga hardware, this is significantly
+faster for very large lists. With "VERIFYMARKER", whdfetch also reads
+marker metadata before deciding to skip.
+
+Use this when you want stricter marker validation and are willing to trade
+speed for it.
+
+@{CODE}
+  whdfetch DOWNLOADGAMES VERIFYMARKER
+@{BODY}
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}FORCEDOWNLOAD@{APEN 1}
+-------------
+
+Forces every archive to be redownloaded, bypassing both the local-file-
+exists check and the extraction-marker check. Even if the ".lha" is
+already present on disk, it is re-fetched from the Retroplay server.
+
+This is more aggressive than "NODOWNLOADSKIP". It bypasses both skip
+layers unconditionally.
+
+@{B}Warning:@{UB} this re-downloads every archive in the selected packs. On a large
+pack, this may involve thousands of files and many gigabytes. Use with
+care on slow or metered connections.
+
+@{CODE}
+  whdfetch DOWNLOADGAMES FORCEDOWNLOAD
+@{BODY}
+
+Full clean re-download and re-extract:
+
+@{CODE}
+  whdfetch DOWNLOADGAMES FORCEDOWNLOAD FORCEEXTRACT
+@{BODY}
+
+--------------------------------------------------------------------------
+
+
+@{"  Return to Contents  " LINK MAIN}
+
+@ENDNODE
+
+@NODE FILTER_OPTIONS "Filter Options"
+@PREV DOWNLOAD_SKIP_OPTIONS
+@NEXT OUTPUT_AND_REPORTING
+@TOC MAIN
+
+@{APEN 2}@{B}Filter Options@{UB}@{APEN 1}
+==============
+
+Filter options exclude certain archive categories from processing.
+Filtering is based on metadata encoded in the archive filename: chipset
+type ("_AGA"), video format ("_NTSC"), media type ("_CD32", "_CDTV"), and
+language codes ("_De", "_Fr", "_It", and others).
+
+Multiple filters can be combined. An archive is processed only if it
+passes all active filters. Filters apply equally to all selected packs.
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}SKIPAGA@{APEN 1}
+-------
+
+Excludes archives whose filename indicates they require the AGA chipset
+(filenames containing "_AGA"). AGA hardware requires an Amiga 1200 or
+Amiga 4000. Use this if you are running on an OCS or ECS machine such as
+an A500, A600, or A2000.
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}SKIPCD@{APEN 1}
+------
+
+Excludes archives for CD-based formats, including CD32, CDTV, and CDRom
+titles. These require a CD drive or CD32 hardware that may not be
+available in a standard WHDLoad setup.
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}SKIPNTSC@{APEN 1}
+--------
+
+Excludes archives flagged as NTSC-only. NTSC games were designed for the
+60 Hz video standard used in North America and Japan. On a PAL Amiga (50
+Hz), some NTSC titles may have timing or display issues.
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}SKIPNONENGLISH@{APEN 1}
+--------------
+
+Excludes archives identified as non-English language versions. The parser
+recognises language codes embedded in the archive filename: "De", "Fr",
+"It", "Es", "NL", "Fi", "Dk", "Pl", "Gr", "Cz", and several others.
+
+Archives with no language code are treated as English and are always
+included.
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}COMBINING FILTERS@{APEN 1}
+-----------------
+
+Filters are cumulative. Use them together for a tightly filtered run:
+
+@{CODE}
+  whdfetch DOWNLOADGAMES SKIPAGA SKIPCD SKIPNTSC SKIPNONENGLISH
+@{BODY}
+
+This downloads only English-language, PAL, OCS/ECS games with no CD
+requirement.
+
+--------------------------------------------------------------------------
+
+
+@{"  Return to Contents  " LINK MAIN}
+
+@ENDNODE
+
+@NODE OUTPUT_AND_REPORTING "Output and Reporting"
+@PREV FILTER_OPTIONS
+@NEXT DISK_SPACE_ESTIMATION
+@TOC MAIN
+
+@{APEN 2}@{B}Output and Reporting@{UB}@{APEN 1}
+====================
+
+
+@{APEN 2}NOSKIPREPORT@{APEN 1}
+------------
+
+Suppresses the per-archive messages normally printed when an archive is
+skipped. On large update runs where most archives are already present,
+this keeps console output focused on what is actually happening.
+
+Skipped archives are still counted in the final summary statistics. If
+"ENABLELOGGING" is active, they are also written to log files.
+
+@{CODE}
+  whdfetch DOWNLOADALL NOSKIPREPORT
+@{BODY}
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}VERBOSE@{APEN 1}
+-------
+
+Shows detailed output from the DAT ZIP extraction step. Without this
+option, ZIP extraction runs quietly. Archive downloads always show
+progress information regardless of this setting.
+
+@{CODE}
+  whdfetch DOWNLOADGAMES VERBOSE
+@{BODY}
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}ENABLELOGGING@{APEN 1}
+-------------
+
+Enables file-based logging for the current run. By default, logging is
+disabled to reduce file I/O overhead on slower original Amiga hardware.
+
+When enabled, whdfetch writes category logs under "PROGDIR:logs/" (for
+example "general_*.log", "download_*.log", and "errors_*.log").
+
+@{CODE}
+  whdfetch DOWNLOADGAMES ENABLELOGGING
+@{BODY}
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}DISABLECOUNTERS@{APEN 1}
+---------------
+
+Disables the pre-count pass and suppresses "Download X of Y" style status
+lines. This also disables the "MB left" running total during large runs.
+
+Use this on slower systems for the leanest possible output path, or when
+running in scripted configurations that do not require progress feedback.
+
+@{CODE}
+  whdfetch DOWNLOADALL DISABLECOUNTERS
+@{BODY}
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}CRCCHECK@{APEN 1}
+--------
+
+Enables CRC verification for downloaded archives using CRC values from the
+DAT metadata. When a mismatch is detected, the download is retried up to 3
+times.
+
+CRC checking is off by default for the fastest operation. Enable it when
+you suspect a connection is introducing corruption, or after a run with
+many unexplained extraction failures.
+
+--------------------------------------------------------------------------
+
+
+@{"  Return to Contents  " LINK MAIN}
+
+@ENDNODE
+
+@NODE DISK_SPACE_ESTIMATION "Disk Space Estimation"
+@PREV OUTPUT_AND_REPORTING
+@NEXT MAINTENANCE_COMMANDS
+@TOC MAIN
+
+@{APEN 2}@{B}Disk Space Estimation@{UB}@{APEN 1}
+=====================
+
+
+@{APEN 2}ESTIMATESPACE@{APEN 1}
+-------------
+
+Calculates how much disk space the selected packs will require, then
+prints a per-pack and combined total without downloading any ROM archives.
+This is a read-only planning command: it downloads and parses the DAT
+files (or uses cached ones if they are up to date), then totals up the
+archive sizes and exits. No game archives are downloaded, and no
+extraction takes place.
+
+Because the DAT metadata contains the compressed archive size for each
+entry, the figures shown are the space needed for the ".lha" files
+themselves. The extracted size cannot be known precisely in advance, so
+whdfetch estimates it at @{B}1.5x the archive size@{UB} as a rough guide.
+
+For each selected pack, the output shows:
+
+- @{B}Archive size@{UB} - total size of all archives in the pack that pass your
+  current filters.
+- @{B}Extracted (estimate)@{UB} - rough estimate of the space needed once all
+  archives are extracted (1.5x archive size).
+
+At the bottom, a combined total is shown for both figures. If you intend
+to use "KEEPARCHIVES", a third figure is shown: the total if you keep the
+archives on disk alongside the extracted games.
+
+All active filter flags ("SKIPAGA", "SKIPCD", "SKIPNTSC",
+"SKIPNONENGLISH") apply normally. Only archives that would pass those
+filters are counted in the totals.
+
+If no pack-selection command is given alongside "ESTIMATESPACE", all five
+packs are estimated automatically (equivalent to "DOWNLOADALL").
+
+@{B}Basic usage - estimate all packs:@{UB}
+
+@{CODE}
+  whdfetch ESTIMATESPACE
+@{BODY}
+
+@{B}Estimate only the Games pack, excluding AGA titles:@{UB}
+
+@{CODE}
+  whdfetch DOWNLOADGAMES ESTIMATESPACE SKIPAGA
+@{BODY}
+
+@{B}Estimate all packs with full OCS/ECS filtering:@{UB}
+
+@{CODE}
+  whdfetch ESTIMATESPACE SKIPAGA SKIPCD SKIPNTSC SKIPNONENGLISH
+@{BODY}
+
+> @{B}Note:@{UB} The 1.5x extracted size is a rough guide only. Actual extracted
+sizes vary by title. The true extracted size is typically in this range,
+but individual packs may differ.
+
+--------------------------------------------------------------------------
+
+
+@{"  Return to Contents  " LINK MAIN}
+
+@ENDNODE
+
+@NODE MAINTENANCE_COMMANDS "Maintenance Commands"
+@PREV DISK_SPACE_ESTIMATION
+@NEXT CONNECTION_SETTINGS
+@TOC MAIN
+
+@{APEN 2}@{B}Maintenance Commands@{UB}@{APEN 1}
+====================
+
+These commands perform destructive operations on local data. Both require
+explicit confirmation before proceeding.
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}PURGETEMP@{APEN 1}
+---------
+
+Permanently deletes the entire "PROGDIR:temp" directory, including all
+downloaded index files, ZIP packs, and extracted DAT files. The program
+prints a brief warning and requires you to type "Y" before deletion
+proceeds.
+
+After purging, the next full run will re-download index and DAT files from
+scratch.
+
+@{CODE}
+  whdfetch PURGETEMP
+@{BODY}
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}PURGEARCHIVES@{APEN 1}
+-------------
+
+Permanently deletes all downloaded ".lha" and ".lzx" archive files under
+"GameFiles/" recursively. Extracted game folders and their contents are
+not touched. The program prints a brief warning and requires explicit
+confirmation with "Y".
+
+Use this to reclaim disk space while keeping extracted game installations
+intact. On the next run, any archive that is missing and not already
+covered by an "ArchiveName.txt" marker will be re-downloaded.
+
+@{CODE}
+  whdfetch PURGEARCHIVES
+@{BODY}
+
+--------------------------------------------------------------------------
+
+
+@{"  Return to Contents  " LINK MAIN}
+
+@ENDNODE
+
+@NODE CONNECTION_SETTINGS "Connection Settings"
+@PREV MAINTENANCE_COMMANDS
+@NEXT ICON_HANDLING
+@TOC MAIN
+
+@{APEN 2}@{B}Connection Settings@{UB}@{APEN 1}
+===================
+
+
+@{APEN 2}TIMEOUT=\<SECONDS\>@{APEN 1}
+-------------------
+
+Sets the maximum number of seconds whdfetch waits for any HTTP activity
+before aborting the current transfer. The timeout applies to every HTTP
+operation during a run: the index fetch, ZIP pack downloads, and
+individual ".lha" archive downloads. A timeout is triggered when a socket
+remains idle for longer than the configured timeout.
+
+Valid values are 5 through 60. The default is 30 seconds. Values outside
+this range are clamped rather than rejected.
+
+CLI arguments override INI settings, so "TIMEOUT=45" overrides any
+"timeout_seconds" value in the INI for that run.
+
+@{CODE}
+  whdfetch DOWNLOADALL TIMEOUT=45
+@{BODY}
+
+The INI equivalent is "timeout_seconds=45" in the "[global]" section.
+
+--------------------------------------------------------------------------
+
+
+@{"  Return to Contents  " LINK MAIN}
+
+@ENDNODE
+
+@NODE ICON_HANDLING "Icon Handling"
+@PREV CONNECTION_SETTINGS
+@NEXT INI_FILE_CONFIGURATION
+@TOC MAIN
+
+@{APEN 2}@{B}Icon Handling@{UB}@{APEN 1}
+=============
+
+After each directory in the extraction hierarchy is created, whdfetch
+writes a drawer icon so every folder appears correctly in Workbench. Icons
+are looked up from "PROGDIR:Icons/" before falling back to the system
+default.
+
+
+@{APEN 2}CUSTOM ICON LOOKUP@{APEN 1}
+------------------
+
+If "PROGDIR:Icons/" exists, whdfetch matches each folder's name against a
+".info" file inside it. For example:
+
+- "PROGDIR:Icons/A.info" - used for the letter-A folder in any pack
+- "PROGDIR:Icons/Games.info" - used for the Games pack folder
+- "PROGDIR:Icons/Games Beta.info" - used for the Games Beta pack folder
+
+If no matching custom icon is found, "GetDefDiskObject(WBDRAWER)" is used
+as a fallback. If the "Icons" folder does not exist, the custom lookup is
+silently skipped - the feature is enabled simply by placing the folder
+there.
+
+An existing icon is never overwritten.
+
+Note: Check that the icon is set to type "Drawer"; otherwise, you may not
+be able to open the new drawer.
+
+
+@{APEN 2}WHDLOAD GAME FOLDER ICONS@{APEN 1}
+-------------------------
+
+WHDLoad archives typically include their own folder icon as part of the
+archive. After successful extraction, whdfetch can replace this icon with
+a consistent template from "PROGDIR:Icons/WHD folder.info". Note: This
+replacement handles write-protected icons by skipping them.
+
+Replaced icons are automatically unsnapshotted, so saved Workbench X/Y
+positions are cleared. This prevents icons from stacking at the same
+screen coordinates when viewed in Workbench.
+
+Shamless plug:> Check out iTidy and iTidy2 on Aminet for a tool to clean
+icons across multiple folders :)
+
+
+@{APEN 2}NOICONS@{APEN 1}
+-------
+
+Disables all custom icon handling. The extraction pipeline will not apply
+icons from "PROGDIR:Icons/". System default drawer icons may still be
+created by AmigaOS if a folder has no icon at all, but nothing from
+"PROGDIR:Icons/" is used. Icon unsnapshotting is also skipped.
+
+@{CODE}
+  whdfetch DOWNLOADGAMES NOICONS
+@{BODY}
+
+--------------------------------------------------------------------------
+
+
+@{"  Return to Contents  " LINK MAIN}
+
+@ENDNODE
+
+@NODE INI_FILE_CONFIGURATION "INI File Configuration"
+@PREV ICON_HANDLING
+@NEXT SESSION_REPORTS
+@TOC MAIN
+
+@{APEN 2}@{B}INI File Configuration@{UB}@{APEN 1}
+======================
+
+"PROGDIR:whdfetch.ini" is optional. When present, it overrides compiled
+defaults.
+
+@{B}Precedence:@{UB} compiled defaults -> INI file -> CLI arguments
+
+CLI arguments always win. For example, if the INI has
+"delete_archives_after_extract=false" but you pass "DELETEARCHIVES" on the
+command line, archives will be deleted.
+
+A fully commented sample file is provided in the whdfetch achive called
+"whdfetch.ini.sample".  Rename it to "whdfetch.ini" start using it
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}\[GLOBAL\] SECTION@{APEN 1}
+------------------
+
+@{CODE}
+  [global]
+  download_website=http://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20P
+  extract_archives=true
+  skip_existing_extractions=true
+  skip_download_if_extracted=true
+  verify_archive_marker_before_download=false
+  force_download=false
+  verbose_output=false
+  timeout_seconds=30
+  extract_path=
+  delete_archives_after_extract=true
+  use_custom_icons=true
+  unsnapshot_icons=true
+  disable_counters=false
+  crccheck=false
+@{BODY}
+
+The "download_website" key sets the base URL used to fetch the index and
+pack downloads. If the Retroplay site is restructured, you can update this
+value without recompiling. The URL must end with a trailing slash.
+
+"extract_path" is empty by default, meaning extraction happens in place
+alongside downloaded archives. Set it to a path, such as "Games:" to
+redirect extraction to a separate volume.
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}\[FILTERS\] SECTION@{APEN 1}
+-------------------
+
+@{CODE}
+  [filters]
+  skip_aga=false
+  skip_cd=false
+  skip_ntsc=false
+  skip_non_english=false
+@{BODY}
+
+Boolean values accept "true"/"false", "yes"/"no", or "1"/"0".
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}\[PACK.\<TYPE\>\] SECTIONS@{APEN 1}
+--------------------------
+
+Each pack has its own section. Types are: "games", "games_beta", "demos",
+"demos_beta", "magazines".
+
+@{CODE}
+  [pack.games]
+  enabled=true
+  display_name=Games
+  download_url=http://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20Packs
+  local_dir=Games/
+  filter_dat=Games(
+  filter_zip=Games(
+@{BODY}
+
+"enabled=true" selects the pack when whdfetch is run without CLI pack-
+selection arguments. "display_name" is the human-readable label used in
+console output and inside "ArchiveName.txt" marker files. "local_dir" is
+the subdirectory under "GameFiles/" where archives and extracted folders
+are stored.
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}PACK-SELECTION PRECEDENCE RULE@{APEN 1}
+------------------------------
+
+Pack selection follows this order at runtime:
+
+1. Start with no packs selected.
+2. Apply INI "[pack.*].enabled" values
+3. If any CLI pack-selection command is present ("DOWNLOADGAMES",
+   "DOWNLOADALL", etc.), all INI pack selections are cleared, and only
+   the CLI selections apply.
+
+In short: if you name a pack on the command line, INI pack settings are
+set aside entirely for that run.
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}CLI TO INI KEY MAPPING@{APEN 1}
+----------------------
+
+@{CODE}
+--------------------------------------------------------------------------------------------
+| CLI Argument        | INI Key                                      | INI Section         |
+|---------------------+----------------------------------------------+---------------------|
+| "DOWNLOADGAMES"     | "enabled=true"                               | "[pack.games]"      |
+| "DOWNLOADBETAGAMES" | "enabled=true"                               | "[pack.games_beta]" |
+| "DOWNLOADDEMOS"     | "enabled=true"                               | "[pack.demos]"      |
+| "DOWNLOADBETADEMOS" | "enabled=true"                               | "[pack.demos_beta]" |
+| "DOWNLOADMAGS"      | "enabled=true"                               | "[pack.magazines]"  |
+| "DOWNLOADALL"       | all five "enabled=true"                      | "[pack.*]"          |
+| "NOEXTRACT"         | "extract_archives=false"                     | "[global]"          |
+| "EXTRACTTO=<path>"  | "extract_path=<path>"                        | "[global]"          |
+| "KEEPARCHIVES"      | "delete_archives_after_extract=false"        | "[global]"          |
+| "DELETEARCHIVES"    | "delete_archives_after_extract=true"         | "[global]"          |
+| "NODOWNLOADSKIP"    | "skip_download_if_extracted=false"           | "[global]"          |
+| "VERIFYMARKER"      | "verify_archive_marker_before_download=true" | "[global]"          |
+| "FORCEDOWNLOAD"     | "force_download=true"                        | "[global]"          |
+| "NOICONS"           | "use_custom_icons=false"                     | "[global]"          |
+| "DISABLECOUNTERS"   | "disable_counters=true"                      | "[global]"          |
+| "CRCCHECK"          | "crccheck=true"                              | "[global]"          |
+| "ENABLELOGGING"     | none (CLI only)                              | n/a                 |
+| "TIMEOUT=<seconds>" | "timeout_seconds=<seconds>"                  | "[global]"          |
+| "SKIPAGA"           | "skip_aga=true"                              | "[filters]"         |
+| "SKIPCD"            | "skip_cd=true"                               | "[filters]"         |
+| "SKIPNTSC"          | "skip_ntsc=true"                             | "[filters]"         |
+| "SKIPNONENGLISH"    | "skip_non_english=true"                      | "[filters]"         |
+--------------------------------------------------------------------------------------------
+@{BODY}
+
+"FORCEEXTRACT" and "NOSKIPREPORT" have no INI equivalents and are per-run
+only.
+
+--------------------------------------------------------------------------
+
+
+@{"  Return to Contents  " LINK MAIN}
+
+@ENDNODE
+
+@NODE SESSION_REPORTS "Session Reports"
+@PREV INI_FILE_CONFIGURATION
+@NEXT SKIP_DETECTION_AND_CACHING
+@TOC MAIN
+
+@{APEN 2}@{B}Session Reports@{UB}@{APEN 1}
+===============
+
+At the end of each run, when any reportable activity occurred, whdfetch
+writes a plain-text session report to "PROGDIR:updates/updates_YYYY-MM-
+DD_HH-MM-SS.txt".
+
+Reports are grouped by pack and list each archive under one of four
+headings:
+
+- @{B}New@{UB} - archives downloaded for the first time with no matching version
+  already installed
+- @{B}Updated@{UB} - archives downloaded that replace an older version of the
+  same title
+- @{B}Local cache reuse (no download)@{UB} - archives handled from existing files
+  in "GameFiles/" without any network fetch
+- @{B}Extraction skipped@{UB} - archives where extraction was intentionally
+  skipped, for example when "c:unlzx" is not installed for a ".lzx"
+  archive
+
+When no reportable activity occurred, the program prints "No new archives
+this session." and no file is written.
+
+
+@{APEN 2}HOW UPDATE DETECTION WORKS@{APEN 1}
+--------------------------
+
+Update classification uses the ".archive_index" cache at download time,
+before the cache entry is updated for the new archive. An archive is
+classified as updated only when:
+
+- It shares the same strict identity as a cached entry: matching title,
+  group, chipset, video format, language, media type, and disk count.
+- The new archive's version number is strictly greater than the cached
+  version.
+
+If the new archive has no numeric version token, it is treated as New. If
+a cached candidate lacks a version token, it is ignored during update
+matching. This prevents false positives where many different releases
+share the same primary title prefix.
+
+--------------------------------------------------------------------------
+
+
+@{"  Return to Contents  " LINK MAIN}
+
+@ENDNODE
+
+@NODE SKIP_DETECTION_AND_CACHING "Skip Detection and Caching"
+@PREV SESSION_REPORTS
+@NEXT TIPS_TROUBLESHOOTING
+@TOC MAIN
+
+@{APEN 2}@{B}Skip Detection and Caching@{UB}@{APEN 1}
+==========================
+
+
+@{APEN 2}ARCHIVE INDEX (`.ARCHIVE_INDEX`)@{APEN 1}
+--------------------------------
+
+Each letter folder under "GameFiles/<pack>/" contains a file called
+".archive_index". This file is a TAB-separated text file with one entry
+per line:
+
+@{CODE}
+  Academy_v1.2.lha	Academy
+  AcademyAGA_v1.0.lha	AcademyAGA
+@{BODY}
+
+Column one is the exact archive filename. Column two is the name of the
+extracted game folder on disk.
+
+The index is loaded into memory at startup, queried during download skip
+checks, updated after each successful extraction, and saved to disk during
+shutdown. Old entries that point to folders which no longer exist are
+pruned automatically on each shutdown.
+
+The index exists because the extracted folder name does not always match
+the archive filename in a predictable way. Without it, confirming that a
+title is already installed would require scanning every subfolder and
+reading its "ArchiveName.txt" - a slow operation on classic Amiga storage.
+
+
+@{APEN 2}MARKER FILE (`ARCHIVENAME.TXT`)@{APEN 1}
+-------------------------------
+
+Inside each extracted game folder, whdfetch writes a two-line text file:
+
+@{CODE}
+  Games
+  Academy_v1.2.lha
+@{BODY}
+
+Line one is the pack display name (for example, Games or Demos (Beta &
+Unofficial)). Line two is the exact archive filename.
+
+If line two of this file matches the archive filename being processed,
+extraction is skipped unless "FORCEEXTRACT" is active. For download pre-
+skip, this marker check is only used when "VERIFYMARKER" (or
+"verify_archive_marker_before_download=true") is enabled.
+
+
+@{APEN 2}INCOMPLETE DOWNLOAD RECOVERY (`.DOWNLOADING`)@{APEN 1}
+---------------------------------------------
+
+Before each download begins, an empty marker file is created alongside the
+archive.  For example:
+
+@{CODE}
+  GameFiles/Games/A/Academy_v1.2.lha.downloading
+@{BODY}
+
+On successful completion, the marker is deleted. If the program is
+interrupted mid-download, both the marker and the partial archive remain
+on disk.
+
+On the next run, whdfetch detects the marker, deletes both the marker and
+the partial archive, and starts the download cleanly. Non-retryable server
+errors (400, 401, 403, 404) also clean up the marker immediately so failed
+entries do not generate futile retries on every subsequent run.
+
+
+@{"  Return to Contents  " LINK MAIN}
+
+@ENDNODE
+
+@NODE TIPS_TROUBLESHOOTING "Tips & Troubleshooting"
+@PREV SKIP_DETECTION_AND_CACHING
+@TOC MAIN
+
+@{APEN 2}@{B}Tips & Troubleshooting@{UB}@{APEN 1}
+======================
+
+@{B}Nothing downloads - the program shows the help screen.@{UB} You need to select
+at least one pack, either by using a CLI pack command or by setting
+"enabled=true" in a "[pack.*]" INI section. If you run whdfetch without
+selecting a pack or providing other arguments, it will show the help
+screen.
+
+@{B}The run downloads nothing new, even though new titles should be available.@{UB}
+Check if "skip_download_if_extracted" is set to "true" in your INI file.
+By default, whdfetch skips titles that are already extracted by checking
+".archive_index" and folders. If "VERIFYMARKER" is enabled, it also checks
+"ArchiveName.txt" metadata. Use "NODOWNLOADSKIP" to skip this logic but
+still check local files, or "FORCEDOWNLOAD" to download everything again.
+
+@{B}A previous run was interrupted, and archives are not being retried.@{UB} Check
+for ".downloading" marker files next to the partial archives in
+"GameFiles/<pack>/<letter>/". If you find them, the next run will detect
+and retry those downloads. If the markers are missing but partial archives
+are still there, delete the partial archives manually and try again.
+
+@{B}Extraction completes, but game folders have the wrong icon.@{UB} Make sure
+"PROGDIR:Icons/WHD folder.info" exists and that the icon is named exactly
+"WHD folder.info". If you used "NOICONS" or set "use_custom_icons=false"
+in the INI, custom icons won't be shown during that run.
+
+@{B}.lzx archives are being skipped.@{UB} "c:unlzx" is either not installed or not
+located in "C:". You can install it from Aminet. whdfetch won't fail if
+unlzx is missing; it will skip ".lzx" archives with a warning and continue
+processing the rest as usual.
+
+@{B}Downloads time out repeatedly.@{UB} Try increasing the timeout. The default is
+30 seconds. Use "TIMEOUT=60" or set "timeout_seconds=60" in the INI if
+your connection is slow or has high latency. Valid values range from 5 to
+60 seconds.
+
+@{B}The collection is already installed. How do I avoid re-downloading
+everything?@{UB} whdfetch handles this automatically if the ".archive_index"
+files and "ArchiveName.txt" markers are in place from previous runs. If
+markers are missing but the original ".lha"/".lzx" archives are still
+present in "GameFiles/<pack>/<letter>/", run "EXTRACTONLY" to process
+those archives and regenerate marker data. If you only have
+already-extracted folders (no archives), "EXTRACTONLY" cannot rebuild
+markers for them.
+
+@{B}I want to try different filter combinations without affecting my main
+collection.@{UB} Use "EXTRACTTO=" to extract files to a different volume or
+partition. This way, everything under "GameFiles/" stays unchanged.
+
+@{B}Disk space is running low, and I want to remove the downloaded archives.@{UB}
+Run whdfetch "PURGEARCHIVES" to delete all ".lha" and ".lzx" files under
+"GameFiles/" without removing the extracted game folders.
+
+@{B}I want to start fresh from a clean DAT download.@{UB} Run whdfetch "PURGETEMP"
+to clear everything in "PROGDIR:temp", including downloaded index and ZIP
+files. The next time you run it, fresh copies will be downloaded.
+
+@{B}The program crashes or behaves oddly at startup.@{UB} Make sure
+"bsdsocket.library" is available and that Roadshow is running. Also, check
+"PROGDIR:logs/" for error log files. The errors log category includes all
+errors, no matter which subsystem caused them.
+
+--------------------------------------------------------------------------
+
+
+@{APEN 2}COMMAND SUMMARY@{APEN 1}
+---------------
+
+@{CODE}
+--------------------------------------------------------------------------------------------
+| Command             | What it does                                                       |
+|---------------------+--------------------------------------------------------------------|
+| "DOWNLOADGAMES"     | Select the Games pack                                              |
+| "DOWNLOADBETAGAMES" | Select the Games Beta pack                                         |
+| "ESTIMATESPACE"     | Estimate disk space needed without downloading anything            |
+| "DOWNLOADDEMOS"     | Select the Demos pack                                              |
+| "DOWNLOADBETADEMOS" | Select the Demos Beta pack                                         |
+| "DOWNLOADMAGS"      | Select the Magazines pack                                          |
+| "DOWNLOADALL"       | Select all five packs                                              |
+| "HELP"              | Show help and exit                                                 |
+| "EXTRACTONLY"       | Extract already-downloaded archives; do not fetch anything new     |
+| "NOEXTRACT"         | Download archives but do not extract them                          |
+| "EXTRACTTO=<path>"  | Extract to an alternate path                                       |
+| "KEEPARCHIVES"      | Keep archive files after extraction                                |
+| "DELETEARCHIVES"    | Delete archive files after extraction (compiled default)           |
+| "FORCEEXTRACT"      | Re-extract even when "ArchiveName.txt" already matches             |
+| "NODOWNLOADSKIP"    | Download even when an extraction marker exists (level 2 bypass)    |
+| "VERIFYMARKER"      | Enable extra "ArchiveName.txt" verification for pre-download skip  |
+| "FORCEDOWNLOAD"     | Re-download even when the file already exists (both levels bypass) |
+| "SKIPAGA"           | Skip AGA-only archives                                             |
+| "SKIPCD"            | Skip CD32 / CDTV / CDRom archives                                  |
+| "SKIPNTSC"          | Skip NTSC-only archives                                            |
+| "SKIPNONENGLISH"    | Skip non-English archives                                          |
+| "NOICONS"           | Disable custom icon replacement                                    |
+| "NOSKIPREPORT"      | Suppress on-screen skip messages                                   |
+| "VERBOSE"           | Show detailed DAT extraction output                                |
+| "DISABLECOUNTERS"   | Disable download counter and progress pre-count                    |
+| "CRCCHECK"          | Enable CRC verification for downloaded archives                    |
+| "TIMEOUT=<seconds>" | Set HTTP timeout (5-60 seconds, default 30)                        |
+| "PURGETEMP"         | Delete "PROGDIR:temp" (prompts for confirmation)                   |
+| "PURGEARCHIVES"     | Delete downloaded archives under "GameFiles/" (prompts first)      |
+--------------------------------------------------------------------------------------------
+@{BODY}
+
+
+@{"  Return to Contents  " LINK MAIN}
+
+@ENDNODE
