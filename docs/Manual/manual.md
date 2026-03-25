@@ -32,19 +32,19 @@ This program helps you set up an internet-connected Amiga with the latest WHDLoa
 ## Requirements
 
 - AmigaOS 3.0 or newer (3.1 or later recommended)
-- TCP/IP stack (`bsdsocket.library v4` or higher) — required for all network operations
-- `c:unzip` — required to extract the DAT files. Available on Aminet: util/arc/UnZip.lha
-- `c:lha` — required for `.lha` archive extraction. Available on Aminet: util/arc/lha
-- `c:unlzx` — optional; required for `.lzx` archive extraction. If not installed, `.lzx` archives are skipped with a warning and the run continues. Aminet: TBC
-- Fast RAM recommended — Should work with at least 2 MB of memory, but more is better.
-- Enough hard drive space to store all the files. A more modern file system, such as PFS, is recommended, as the extracted archives can easily exceed the 4GB limit.
-- A working install of WHDLoad (download and install WHDLoad_usr.lha from www.whdload.de).  Some packs may need the Amiga kickstarts installed into Devs:kickstart drawer, which you can purchase from www.amigaforever.com
+- A working TCP/IP stack with `bsdsocket.library` support, required for all network operations
+- `c:unzip`, required to extract the DAT ZIP files. Available on Aminet: `util/arc/UnZip.lha`
+- `c:lha`, required for `.lha` archive extraction. Available on Aminet: `util/arc/lha`
+- `c:unlzx`, optional but required for `.lzx` archive extraction. If not installed, `.lzx` archives are skipped with a warning and the run continues. Available on Aminet: `util/arc/lzx121r1.lha`
+- Fast RAM recommended. The program should run on low-memory systems, but more memory will improve usability
+- Enough free hard drive space for downloads and extracted files. The full collection can require many gigabytes, so a more modern file system such as PFS is recommended
+- A working install of WHDLoad is recommended if you want to run the extracted titles afterwards
 
 ---
 
 ## Introduction
 
-After rebuilding my Amiga, I found downloading and extracting all the latest WHDLoad packs took a lot of time. This program simplifies that by downloading the newest packs from RetroPlay and the archives from the Turran server. You can choose one or more packs, such as Games or Demos, and apply simple filters by chipset, language, CD, and more. It extracts archives directly to a folder you pick, creating a clear file path (for example, “Games/A/A10TankKiller3Disk”) with custom or default icons. You can also choose to keep or delete the downloaded archive after extraction. Running the program again on the same folder will check for new or updated items and download only what’s needed.
+After rebuilding my Amiga, one of the most time-consuming jobs for me was manually downloading and extracting all the latest WHDLoad packs. This program makes it easier by downloading the newest WHDLoad packs from RetroPlay through the Turran server. You can choose one or more packs like Games or Demos and apply simple filters by chipset, language, CD, and more. It extracts the archive directly to a folder you pick, creating a clear file path (for example, "Games/A/A10TankKiller3Disk") with either custom or default icons. You also get to decide whether to keep the downloaded archive after extraction or delete it. Running the program again on the same folder will check for new or updated WHDLoad items and download only what’s needed.
 
 If you like, the program can verify the downloaded archive’s CRC against the server’s to ensure the download was successful. Also, extracting archives directly on the Amiga, real or emulated, is the only way I know to preserve special file metadata and attributes correctly. 
 
@@ -58,13 +58,13 @@ Right now, this program works only through the command line. You can use an opti
 
 ### 1. Copy the program files
 
-Copy `whdfetch` to a folder on your Amiga. If you want to use a custom setup, copy `whdfetch.ini` to the same folder. If you don’t include `whdfetch.ini`, the program will use its default settings.
+Copy `whdfetch` to a folder on your Amiga. If you want to use a custom setup, copy `whdfetch.ini` to the same folder as well. If you do not include `whdfetch.ini`, the program uses its built-in default settings. The `.ini` file supplies defaults only. It does not currently run the program by itself.
 
 ### 2. Ensure internet access is working
 
 Your Amiga must already be connected to the internet before running whdfetch.
 
-I use Roadshow for my TCP/IP stack, but `whdfetch` has also been tested well with the emulated `bsdsocket.library` under WinUAE. Other TCP/IP stacks should work too, as long as your Amiga can access the internet.
+I use Roadshow for my TCP/IP stack, but `whdfetch` has also been tested successfull with the emulated `bsdsocket.library` under WinUAE. Other TCP/IP stacks should work too, as long as your Amiga can access the internet.
 
 ### 3. Open a Shell
 
@@ -72,7 +72,7 @@ Open a Shell and change to the directory where you placed `whdfetch`.
 
 ### 4. Check the required disk space first
 
-Before you download anything, run this command:
+Before you download any actual WHDLoad archives, run this command:
 
 ```text
 whdfetch ESTIMATESPACE
@@ -88,9 +88,7 @@ It shows:
 
 This is the safest first command for new users, as it lets you see the storage requirements before committing to a long download.
 
-This is the safest first step for new users because it lets you check storage needs before starting a long download.
-
-Note that downloaded archives are stored in a GameFiles directory created in the same location from which `whdfetch` is run. Extracted files can be redirected elsewhere with `EXTRACTTO`, but the downloaded archives still need space on the drive where `whdfetch` is being run. For this reason, checking free space before starting is very important.
+Note that downloaded archives are stored in a GameFiles directory created in the same location from which `whdfetch` is run. Extracted files can be redirected elsewhere with `EXTRACTTO=<path>`, but the downloaded archives still need space on the drive where `whdfetch` is being run. For this reason, checking free space before starting is very important.
 
 Usually, the full collection needs many gigabytes of free space, especially if you choose to keep the archives with `KEEPARCHIVES`.
 
@@ -98,12 +96,12 @@ Usually, the full collection needs many gigabytes of free space, especially if y
 
 Before you start a real download, decide where you want the extracted files to go.
 
-Use `EXTRACTTO` to pick the destination folder. `whdfetch` will automatically create the right folder structure inside it.
+Use `EXTRACTTO=<path>` to pick the destination folder. `whdfetch` will automatically create the right folder structure inside it.
 
 For example:
 
 ```text
-whdfetch DOWNLOADBETADEMOS EXTRACTTO Work:WHDLoad/
+whdfetch DOWNLOADBETADEMOS EXTRACTTO=Work:WHDLoad/
 ```
 
 Here, the extracted files go under Work:WHDLoad/ instead of the program folder.
@@ -162,13 +160,13 @@ whdfetch DOWNLOADGAMES EXTRACTTO Work:WHDLoad/
 Run `ESTIMATESPACE` before any big download, especially if your hard disk space is limited.
 
 **Keep in mind where archives are saved.**
-Downloaded archives go into the GameFiles folder created where you run `whdfetch`. Even if you use `EXTRACTTO`, the drive with `whdfetch` still needs enough free space for the archives.
+Downloaded archives go into the GameFiles folder created where you run `whdfetch`. Even if you use `EXTRACTTO=<path>`, the drive with `whdfetch` still needs enough free space for the archives.
 
 **Pick your extraction destination from the start.**
-Using `EXTRACTTO` right away helps keep extracted files on the right drive and shows you where new folders will be created.
+Using EXTRACTTO=<path> straight away helps keep extracted files on the correct drive and makes it clear where the new folder structure will be created.
 
 **Use filters.**
-If your machine can’t run some titles (like AGA), applying filters first can save download time and disk space.
+If your machine cannot run some titles, such as AGA-only releases, applying filters first can save both download time and disk space.
 
 **By default, archives are deleted after extraction.**
 If you want to keep the downloaded archives as a backup, use this:
@@ -180,11 +178,11 @@ whdfetch DOWNLOADGAMES KEEPARCHIVES EXTRACTTO=Work:WHDLoad/
 Kept archives also act as a local cache. If a later command needs the same archive again, `whdfetch` can reuse the copy already stored in `GameFiles` instead of downloading it again, provided it is still present and up to date.
 
 **You don’t need to keep archives for future updates.**
-If you run the same pack again on the same extraction folder, `whdfetc` checks tracking files inside the folders and skips titles that are already up to date. This lets you refresh a Retroplay WHDLoad collection over time without redownloading everything.
+If you run the same pack again against the same extraction folder, whdfetch checks the extracted folders for matching archive markers and skips titles that are already up to date.
 
-This works even if you deleted archives after extraction, because metadata like .archive_index is saved inside the extraction folders.
+This still works even if you deleted the archives after extraction, because the extracted folders keep metadata such as ArchiveName.txt, and whdfetch can also use .archive_index as a fast lookup cache.
 
-Be aware that keeping archives requires significantly more disk space, as both the archives and the extracted contents must be stored.
+Be aware that keeping archives requires significantly more disk space, since both the archives and the extracted contents must be stored
 ---
 
 ## How It Works
@@ -194,11 +192,11 @@ A whdfetch run follows a set sequence of steps for each selected pack:
 1. **Fetch the index.** The program downloads `index.html` from the Turran FTP site and scans it for links that match the expected pack filename pattern.
 2. **Download the pack ZIP.** Each matching pack link is a ZIP file containing a DAT (XML) file listing every archive in that pack, including filenames, sizes, and CRC values. The ZIP is downloaded to `temp/Zip files/` and extracted to `temp/Dat files/`.
 3. **Parse the DAT file.** Every `<rom name="...">` entry in the XML is parsed. The filename is decoded to extract metadata: title, version, chipset requirement, video format, language codes, media type, and number of disks. Active filters are applied at this stage.
-4. **Process each entry.** For every archive that passes the filters, whdfetch checks if it's already present and up to date using the `.archive_index` cache. If enabled, it can also verify `ArchiveName.txt` markers before skipping a download. If the archive needs downloading, it fetches it from the Retroplay FTP server directly to `GameFiles/<pack>/<letter>/`.
-5. **Extract.** If extraction is enabled (the default), the archive is processed with `c:lha` or `c:unlzx`. An `ArchiveName.txt` marker is written inside the extracted folder. Optional icon replacement happens afterward.
-6. **Report.** At the end of the run, per-pack statistics are printed to the console, and a full session report is saved to `PROGDIR:updates/updates_YYYY-MM-DD_HH-MM-SS.txt`.
+4. **Process each entry.** For every archive that passes the filters, whdfetch checks if it's already present and up to date using the `.archive_index` cache. If enabled, it can also verify `ArchiveName.txt` markers before skipping a download. If the archive needs downloading, it fetches it from the Turran FTP server directly to `GameFiles/<pack>/<letter>/`.
+5. **Extract.** If extraction is enabled, which is the default, the archive is processed with `c:lha` for `.lha` files or `c:unlzx` for `.lzx` files. After a successful extraction, an `ArchiveName.txt` marker is written inside the extracted folder, optional icon handling is applied, and the `.archive_index` cache is updated. If `c:unlzx` is not installed, `.lzx` extraction is skipped with a warning.
+6. **Report.** At the end of the run, per-pack statistics are printed to the console, and a full session report is saved to `PROGDIR:updates/updates_YYYY-MM-DD_HH-MM-SS.txt` when reportable activity exists.
 
-A whdfetch.ini file can be configured with the exact path to the website and other HTML filtering options to locate each pack. This configuration allows whdfetch to be updated without recompilation if the paths change in the future.
+A `whdfetch.ini` file can also define default settings such as website paths, extraction behaviour, skip options, icons, timeout values, and selected packs. This helps `whdfetch` adapt to future path or site changes without requiring recompilation.  Right now, the program works only through the command line. An optional `.ini` file can be used to set default packs, filters, paths, and other options, but it does not start a run by itself. You still need to launch `whdfetch` with a command such as `ESTIMATESPACE` or `DOWNLOADGAMES`.
 
 ---
 
@@ -699,7 +697,7 @@ whdfetch DOWNLOADGAMES NOICONS
 
 ## INI File Configuration
 
-`PROGDIR:whdfetch.ini` is optional. When present, it overrides compiled defaults.
+`PROGDIR:whdfetch.ini` is optional. When present, it overrides compiled defaults. At present, whdfetch does not start a download just because a whdfetch.ini file is present. Running with no arguments shows the help screen
 
 **Precedence:** compiled defaults → INI file → CLI arguments
 

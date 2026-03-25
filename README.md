@@ -1,13 +1,18 @@
-# Retroplay WHD Downloader
+# whdfetch — Retroplay WHDLoad Downloader for AmigaOS
 
-AmigaOS CLI tool that automates downloading, extracting, and organising
+`whdfetch` is a CLI tool for AmigaOS 3.0+ that automates downloading, extracting, and organising
 [WHDLoad](http://www.whdload.de/) game, demo, and magazine packs from the
-[Retroplay](http://turran.retroplay.org/) FTP site.
+[Retroplay](http://turran.retroplay.org/) collection on the Turran FTP server.
 
-Run it from a Shell window on your Amiga (or WinUAE). It handles everything:
-fetching the pack index, downloading only what is new, extracting archives,
-writing skip-markers so already-installed titles are never re-processed, and
-optionally replacing drawer icons.
+After rebuilding my Amiga, one of the most time-consuming jobs was manually browsing the
+Retroplay site, downloading every pack, extracting archives, and keeping everything
+organised. `whdfetch` does all of that from a single Shell command. Select the packs you
+want, apply filters for your machine's chipset and region, and let it run. On a subsequent
+run it compares what is already installed against the latest pack listings and downloads
+only what is new or updated.
+
+> **Note:** This is a pure CLI tool. There is no GUI, no Workbench application, and no
+> Intuition windows.
 
 ---
 
@@ -16,223 +21,114 @@ optionally replacing drawer icons.
 | Requirement | Notes |
 |-------------|-------|
 | AmigaOS 3.0+ | 3.1+ recommended |
-| Roadshow TCP/IP stack | `bsdsocket.library v4+` required for HTTP |
-| `c:lha` | Required for `.lha` extraction |
-| `c:unlzx` | Optional for `.lzx` extraction (`.lzx` archives are skipped if missing) |
-| Fast RAM | Strongly recommended — tool uses `MEMF_ANY` allocations |
+| TCP/IP stack with `bsdsocket.library` | Roadshow recommended; WinUAE emulated stack also works |
+| `c:lha` | Required for `.lha` archive extraction |
+| `c:unzip` | Required for extracting the DAT ZIP files |
+| `c:unlzx` | Optional — `.lzx` archives are skipped with a warning if not installed |
+| Enough free hard drive space | The full collection is many gigabytes; a modern filesystem such as PFS is recommended |
+
+Fast RAM is recommended. The allocator uses `MEMF_ANY`, which prefers Fast RAM automatically.
 
 ---
 
-## Quick Start
+## How it works
 
-1. Copy `whdfetch` and `whdfetch.ini` to a directory on your Amiga
-2. Edit `whdfetch.ini` (or use CLI flags — see below)
-3. Open a Shell in that directory and run:
+A run follows a fixed sequence for each selected pack:
 
-```
-whdfetch GAME
-```
+1. Downloads `index.html` from the Turran FTP site and scans it for pack links.
+2. Downloads each matching ZIP file and extracts the XML DAT file inside it, which lists every archive in that pack with filenames, sizes, and CRC checksums.
+3. Parses every `<rom name="...">` entry in the DAT and applies any active skip filters.
+4. For each archive that passes the filters, checks whether it is already installed using a fast per-letter `.archive_index` cache. Archives not yet installed are downloaded directly from the FTP server into `GameFiles/<pack>/<letter>/`.
+5. Extracts each downloaded archive with `c:lha` or `c:unlzx`, writes an `ArchiveName.txt` marker inside the extracted game folder, updates the index, and optionally replaces drawer icons.
+6. At the end of the run, prints a per-pack summary to the Shell and saves a full session report to `PROGDIR:updates/`.
 
-Games will be downloaded to `GameFiles/Games/` organised into letter sub-folders.
+Running the same command again later checks only for what is new — already-extracted titles are skipped automatically.
 
 ---
 
-## CLI Arguments
+## Quick start
 
-### What to download
+Before committing to a large download, check how much disk space you will need:
 
-| Argument | Action |
-|----------|--------|
-| `GAME` / `DOWNLOAD` | Download Games pack |
-| `GAMEBETA` | Download Games Beta pack |
-| `DEMO` | Download Demos pack |
-| `DEMOBETA` | Download Demos Beta pack |
-| `MAGAZINE` | Download Magazines pack |
-| `DOWNLOADALL` | Download all five packs |
-| `PURGETEMP` | Delete `PROGDIR:temp` recursively (asks for confirmation first) |
-| `PURGEARCHIVES` | Purge downloaded archives (`.lha`/`.lzx`) under `GameFiles/` (asks for confirmation; keeps extracted folders) |
-| `HELP` | Show help and exit |
+```text
+whdfetch ESTIMATESPACE
+```
 
-### Extraction control
+This downloads the latest DAT files, reads the archive sizes, and prints an estimate without downloading any game archives. It also accepts filter flags so the estimate reflects your actual setup:
 
-| Argument | Action |
-|----------|--------|
+```text
+whdfetch ESTIMATESPACE SKIPAGA SKIPCD SKIPNTSC SKIPNONENGLISH
+```
+
+When you are ready to start, try the smallest pack first to verify that downloading, extracting, and folder creation all work correctly on your system:
+
+```text
+whdfetch DOWNLOADBETADEMOS EXTRACTTO=Work:WHDLoad/
+```
+
+`EXTRACTTO` redirects extracted files to a separate volume while keeping the downloaded archives in the `GameFiles` folder alongside `whdfetch`. Once you are satisfied, move on to the larger packs:
+
+```text
+whdfetch DOWNLOADGAMES EXTRACTTO=Work:WHDLoad/
+```
+
+The Games pack is the largest and can take many hours on real hardware — it is best run overnight.
+
+---
+
+## Available packs
+
+| Command | Pack | Extracted to |
+|---------|------|-------------|
+| `DOWNLOADGAMES` | Games | `GameFiles/Games/` |
+| `DOWNLOADBETAGAMES` | Games Beta & Unofficial | `GameFiles/Games Beta/` |
+| `DOWNLOADDEMOS` | Demos | `GameFiles/Demos/` |
+| `DOWNLOADBETADEMOS` | Demos Beta & Unofficial | `GameFiles/Demos Beta/` |
+| `DOWNLOADMAGS` | Magazines | `GameFiles/Magazines/` |
+| `DOWNLOADALL` | All five packs | — |
+
+---
+
+## Filters
+
+If your machine cannot run certain types of title, apply filters to skip them at the DAT-parsing stage:
+
+| Flag | Skips |
+|------|-------|
+| `SKIPAGA` | AGA-only titles (require A1200 or A4000) |
+| `SKIPCD` | CD32, CDTV, and CDRom titles |
+| `SKIPNTSC` | NTSC-only releases |
+| `SKIPNONENGLISH` | Non-English or English-absent releases |
+
+Filters can also be set permanently in `whdfetch.ini` so you do not need to type them every run.
+
+---
+
+## Key options
+
+A few options that are good to know from the start:
+
+| Option | Effect |
+|--------|--------|
+| `KEEPARCHIVES` | Keep `.lha`/`.lzx` files after extraction (default is to delete them) |
 | `NOEXTRACT` | Download archives but do not extract them |
 | `EXTRACTONLY` | Extract already-downloaded archives without downloading anything new |
-| `EXTRACTTO=<path>` | Extract to an alternate path (preserves pack/letter layout) |
-| `KEEPARCHIVES` | Keep archive files (`.lha`/`.lzx`) after successful extraction |
-| `DELETEARCHIVES` | Delete archive files (`.lha`/`.lzx`) after successful extraction |
-| `FORCEEXTRACT` | Re-extract even when `ArchiveName.txt` already matches |
-| `FORCEDOWNLOAD` | Re-download even when the title is already extracted |
-| `NODOWNLOADSKIP` | Download even if an extraction marker exists |
-| `VERIFYMARKER` | Enable extra `ArchiveName.txt` verification before download skip |
+| `FORCEEXTRACT` | Re-extract even if the title is already marked as installed |
+| `FORCEDOWNLOAD` | Re-download even if the title is already extracted |
+| `CRCCHECK` | Verify each downloaded archive against the CRC in the DAT file |
+| `NOICONS` | Skip drawer icon replacement after extraction |
 
-### Skip filters
-
-| Argument | Skips |
-|----------|-------|
-| `SKIP_AGA` | AGA-only titles (require A1200/A4000) |
-| `SKIP_CD` | CD32 / CDTV / CDRom titles |
-| `SKIP_NTSC` | NTSC-only releases |
-| `SKIP_NONENG` | Non-English or English-absent releases |
-
-### Output
-
-| Argument | Action |
-|----------|--------|
-| `NOICONS` | Skip icon replacement after extraction |
-| `NOSKIP` | Print a line for every skipped title |
-| `VERBOSE` | Show detailed unzip output (default is quiet) |
-| `DISABLECOUNTERS` | Disable counter features (including pre-count and terminal counter display) |
-| `CRCCHECK` | Enable CRC verification for downloaded archives |
+For the complete reference see [docs/CLI_Reference.md](docs/CLI_Reference.md).
 
 ---
 
-## INI Configuration
+## INI configuration
 
-`PROGDIR:whdfetch.ini` is optional. When present it overrides built-in defaults.
-If only legacy `PROGDIR:WHDDownloader.ini` exists, it is still supported as a fallback.
-CLI arguments always take precedence over INI values.
+`whdfetch.ini`, placed alongside the binary, lets you set default packs, filters, paths,
+website URLs, and other options so you do not need to repeat them on every run. CLI flags
+always override INI values for the current run.
 
-**Precedence:** built-in defaults → INI → CLI arguments
-
-A fully annotated sample is at `docs/whdfetch.ini.sample`.  
-A per-key test checklist is at `docs/ini_runtime_test_matrix.md`.
-
-### `[global]`
-
-```ini
-download_website=http://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20Packs/
-extract_archives=true
-skip_existing_extractions=true
-skip_download_if_extracted=true
-verify_archive_marker_before_download=false
-verbose_output=false
-extract_path=                     ; empty = extract in place
-delete_archives_after_extract=true
-use_custom_icons=true
-unsnapshot_icons=true
-disable_counters=false
-crccheck=false
-```
-
-### `[filters]`
-
-```ini
-skip_aga=false
-skip_cd=false
-skip_ntsc=false
-skip_non_english=false
-```
-
-### `[pack.<type>]`
-
-Types: `games`, `games_beta`, `demos`, `demos_beta`, `magazines`
-
-```ini
-[pack.games]
-enabled=true
-display_name=Games
-download_url=http://...
-local_dir=Games/
-filter_dat=Games(
-filter_zip=Games(
-```
-
-Boolean values accept `true`/`false`, `yes`/`no`, `1`/`0`.
-
----
-
-## How skip detection works
-
-Before downloading a title, whdfetch checks whether it has already been extracted:
-
-1. It looks up the archive filename in the in-memory `.archive_index` cache  
-    (loaded from `GameFiles/<pack>/<letter>/.archive_index` at startup)
-2. If found, it verifies the indexed extracted folder still exists.
-3. Optional: when `VERIFYMARKER` is enabled (or
-    `verify_archive_marker_before_download=true` in INI), it also checks
-    `<game folder>/ArchiveName.txt` — a two-line marker:
-
-```
-Games
-Academy_v1.2.lha
-```
-
-If line 2 is an exact match for the incoming archive filename, the title is skipped.
-Without `VERIFYMARKER`, the pre-download skip uses the index+folder fast path.
-
-Use `FORCEEXTRACT` to bypass the extraction skip check.  
-Use `FORCEDOWNLOAD` or `NODOWNLOADSKIP` to bypass the download skip check.
-
----
-
-## Runtime directory layout
-
-```
-PROGDIR:
-├── whdfetch
-├── whdfetch.ini
-├── GameFiles/
-│   ├── Games/
-│   │   ├── A/
-│   │   │   ├── .archive_index       (hidden skip cache)
-│   │   │   ├── A.info               (letter drawer icon)
-│   │   │   └── Academy/
-│   │   │       ├── Academy.slave
-│   │   │       ├── Academy.info
-│   │   │       └── ArchiveName.txt
-│   │   └── B/ …
-│   ├── Games Beta/ …
-│   ├── Demos/ …
-│   ├── Demos Beta/ …
-│   └── Magazines/ …
-├── icons/
-│   ├── A.info … Z.info              (letter icon templates)
-│   └── WHD folder.info              (game icon template, optional)
-├── logs/
-│   ├── general_YYYY-MM-DD_HH-MM-SS.log
-│   ├── download_YYYY-MM-DD_HH-MM-SS.log
-│   ├── parser_YYYY-MM-DD_HH-MM-SS.log
-│   └── errors_YYYY-MM-DD_HH-MM-SS.log
-└── temp/
-    ├── index.html
-    ├── Zip files/
-    └── Dat files/
-```
-
----
-
-## Log files
-
-Logs are written to `PROGDIR:logs/` on every run. The `errors_*.log` file receives a
-copy of every error regardless of which category produced it — check it first when
-diagnosing problems.
-
----
-
-## Building from source
-
-```powershell
-make                    # release build
-make CONSOLE=1          # with console output (use when debugging)
-make MEMTRACK=1         # with allocation/leak tracking
-make CONSOLE=1 MEMTRACK=1
-make AUTO=0             # omit -lauto (isolates startup crashes)
-make refresh-version    # refresh build/amiga/generated/build_version.h to today's date
-make release            # clean release build with fresh date and stripped symbols
-make clean
-```
-
-**Requirements:** VBCC cross-compiler + NDK 3.2 + Roadshow SDK on Windows host.
-
-**Build note (Windows):** normal `make` builds use the pinned date in
-`build/amiga/generated/build_version.h` (created from `PINNED_BUILD_DATE` in `Makefile`
-if missing). Use `make refresh-version` to update that header date manually.
-`make release` always regenerates the header date in `DD.MM.YYYY` format via PowerShell
-before compiling and links with symbol stripping enabled.
-
-Output binary: `Bin/Amiga/whdfetch`
+A fully annotated sample is provided at [Bin/Amiga/whdfetch.ini.sample](Bin/Amiga/whdfetch.ini.sample).
 
 ---
 
@@ -240,10 +136,34 @@ Output binary: `Bin/Amiga/whdfetch`
 
 | File | Contents |
 |------|----------|
-| `PROJECT_OVERVIEW.md` | Full architecture and data-flow overview |
-| `AGENTS.md` | AI agent operational guide (module map, task patterns, pitfalls) |
-| `.github/copilot-instructions.md` | Coding standards, API reference, build rules |
-| `docs/whdfetch.ini.sample` | Fully annotated INI sample |
-| `docs/ini_runtime_test_matrix.md` | Per-key INI test checklist |
-| `docs/extraction_plan.md` | Extraction system design |
-| `docs/archive_index_plan.md` | Archive index cache design |
+| [docs/Manual/manual.md](docs/Manual/manual.md) | Full user manual — getting started, how it works, all options explained in prose |
+| [docs/CLI_Reference.md](docs/CLI_Reference.md) | Complete CLI argument reference |
+| [Bin/Amiga/whdfetch.ini.sample](Bin/Amiga/whdfetch.ini.sample) | Fully annotated INI configuration sample |
+| [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) | Architecture and data-flow overview |
+
+---
+
+## Building from source
+
+The project targets AmigaOS 3.0+ / 68000+ and is compiled with
+[VBCC](http://www.compilers.de/vbcc.html) on a Windows host using the NDK 3.2 and
+Roadshow SDK.
+
+```powershell
+make                       # standard release build
+make CONSOLE=1             # with console output (useful when debugging)
+make CONSOLE=1 MEMTRACK=1  # with console output and allocation leak tracking
+make release               # clean release build with refreshed build date
+make refresh-version       # update the build date header without a full rebuild
+make clean
+```
+
+Output binary: `Bin/Amiga/whdfetch`
+
+For full build instructions and coding standards see
+
+---
+
+## License
+
+This project is for personal use. See repository settings for licence details.
