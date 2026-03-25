@@ -49,7 +49,7 @@ Academy_v1.2.lha ──(direct download)▶  GameFiles/Games/A/Academy_v1.2.lha
                                              ▼
                                        GameFiles/Games/A/Academy/
                                            Academy.slave
-                                           Academy.info   ← replaced from Icons/
+                                                               Academy.info   ← replaced from icons/
                                            ArchiveName.txt
 ```
 
@@ -59,11 +59,11 @@ Academy_v1.2.lha ──(direct download)▶  GameFiles/Games/A/Academy_v1.2.lha
 
 | CLI flag | Pack | Local folder |
 |----------|------|-------------|
-| `GAME` / `DOWNLOAD` | Games | `GameFiles/Games/` |
-| `GAMEBETA` | Games Beta | `GameFiles/Games Beta/` |
-| `DEMO` | Demos | `GameFiles/Demos/` |
-| `DEMOBETA` | Demos Beta | `GameFiles/Demos Beta/` |
-| `MAGAZINE` | Magazines | `GameFiles/Magazines/` |
+| `DOWNLOADGAMES` | Games | `GameFiles/Games/` |
+| `DOWNLOADBETAGAMES` | Games Beta | `GameFiles/Games Beta/` |
+| `DOWNLOADDEMOS` | Demos | `GameFiles/Demos/` |
+| `DOWNLOADBETADEMOS` | Demos Beta | `GameFiles/Demos Beta/` |
+| `DOWNLOADMAGS` | Magazines | `GameFiles/Magazines/` |
 | `DOWNLOADALL` | All of the above | — |
 
 ---
@@ -72,10 +72,10 @@ Academy_v1.2.lha ──(direct download)▶  GameFiles/Games/A/Academy_v1.2.lha
 
 ### Skip filtering
 Before downloading, each ROM name is parsed into metadata. ROMs can be skipped by:
-- `SKIP_AGA` — AGA-only games (require A1200/A4000 chipset)
-- `SKIP_CD` — CD32 / CDTV / CDRom titles
-- `SKIP_NTSC` — NTSC-only releases
-- `SKIP_NONENG` — non-English or English-absent releases
+- `SKIPAGA` — AGA-only games (require A1200/A4000 chipset)
+- `SKIPCD` — CD32 / CDTV / CDRom titles
+- `SKIPNTSC` — NTSC-only releases
+- `SKIPNONENGLISH` — non-English or English-absent releases
 
 These can be set via CLI flags or in the INI file `[filters]` section.
 
@@ -92,9 +92,16 @@ Games
 Academy_v1.2.lha
 ```
 Line 1 is the category display name; line 2 is the exact archive filename.
-When whdfetch checks whether to re-download or re-extract a title it reads this
-marker. If line 2 matches the incoming archive name, the operation is skipped.
-Use `FORCEEXTRACT` or `FORCEDOWNLOAD` to override.
+Extraction skip checks use this marker by default. Pre-download skip checks use
+fast folder/index checks, with optional marker verification via `VERIFYMARKER`.
+Use `FORCEEXTRACT` or `FORCEDOWNLOAD` to override skip behavior.
+
+### Session update report
+When archives are processed, a per-run update summary is written to:
+- `updates/updates_YYYY-MM-DD_HH-MM-SS.txt`
+
+The report groups by pack and includes new archives, updates, local-cache reuse,
+extraction skips, and download failures.
 
 ### Icon replacement
 After extraction, whdfetch can replace the `.info` (icon) files placed by the
@@ -108,6 +115,10 @@ WHDLoad slave with custom ones from `PROGDIR:Icons/`:
 If only legacy `PROGDIR:WHDDownloader.ini` exists, it is used as fallback.
 CLI arguments always take precedence over INI values.
 See `docs/whdfetch.ini.sample` for a fully annotated sample.
+
+### Logging behavior
+Logging is opt-in (`ENABLELOGGING`). When disabled, log files are not created.
+When enabled, logs are written under `PROGDIR:logs/` by category.
 
 ---
 
@@ -148,7 +159,9 @@ PROGDIR:                           (the directory containing whdfetch)
 ├── icons/
 │   ├── A.info … Z.info           letter icon templates
 │   └── WHD folder.info           game icon template (optional)
-├── logs/
+├── updates/
+│   └── updates_YYYY-MM-DD_HH-MM-SS.txt   session update report
+├── logs/                         created when ENABLELOGGING is used
 │   ├── general_YYYY-MM-DD_HH-MM-SS.log
 │   ├── download_YYYY-MM-DD_HH-MM-SS.log
 │   ├── parser_YYYY-MM-DD_HH-MM-SS.log
@@ -165,7 +178,23 @@ PROGDIR:                           (the directory containing whdfetch)
 
 ```
 src/
-├── main.c / main.h               Entry point, CLI parsing, 5-pack loop, do_shutdown()
+├── main.c / main.h               Thin orchestration entry point and shared types/constants
+├── cli/
+│   └── cli_parser.c/h            CLI argument detection and option application
+├── config/
+│   ├── app_constants.c           Runtime constants (URLs, paths, pack metadata strings)
+│   ├── app_defaults.c/h          Default pack definitions and option defaults
+│   └── app_state.c               Global process state/counters
+├── startup/
+│   └── startup.c/h               Startup banner, dependency checks, config validation/logging
+├── lifecycle/
+│   └── lifecycle.c/h             Coordinated shutdown and PURGEARCHIVES workflow
+├── phases/
+│   ├── html_phase.c/h            HTML link extraction/validation phase
+│   ├── dat_phase.c/h             DAT ZIP extraction and XML→ROM list processing
+│   └── download_phase.c/h        Queue counting, estimate-space output, archive download loop
+├── report/
+│   └── report.c/h                Per-session updates report writer (updates/)
 ├── ini_parser.c/h                whdfetch.ini (legacy fallback supported) → runtime overrides
 ├── gamefile_parser.c/h           <rom name="..."> → game_metadata struct
 ├── utilities.c/h                 String/file helpers, WB version detection
@@ -203,6 +232,7 @@ make CONSOLE=1          # with console (printf visible in Shell)
 make MEMTRACK=1         # with allocation/leak tracking
 make CONSOLE=1 MEMTRACK=1
 make AUTO=0             # omit -lauto (isolate startup crashes)
+make release            # clean + refresh build date + stripped release binary
 make clean
 ```
 

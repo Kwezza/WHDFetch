@@ -27,7 +27,7 @@ only what is new or updated.
 | `c:unlzx` | Optional — `.lzx` archives are skipped with a warning if not installed |
 | Enough free hard drive space | The full collection is many gigabytes; a modern filesystem such as PFS is recommended |
 
-Fast RAM is recommended. The allocator uses `MEMF_ANY`, which prefers Fast RAM automatically.
+Fast RAM is recommended. 
 
 ---
 
@@ -128,7 +128,7 @@ For the complete reference see [docs/CLI_Reference.md](docs/CLI_Reference.md).
 website URLs, and other options so you do not need to repeat them on every run. CLI flags
 always override INI values for the current run.
 
-A fully annotated sample is provided at [Bin/Amiga/whdfetch.ini.sample](Bin/Amiga/whdfetch.ini.sample).
+A fully annotated sample is provided at [docs/whdfetch.ini.sample](docs/whdfetch.ini.sample).
 
 ---
 
@@ -138,7 +138,7 @@ A fully annotated sample is provided at [Bin/Amiga/whdfetch.ini.sample](Bin/Amig
 |------|----------|
 | [docs/Manual/manual.md](docs/Manual/manual.md) | Full user manual — getting started, how it works, all options explained in prose |
 | [docs/CLI_Reference.md](docs/CLI_Reference.md) | Complete CLI argument reference |
-| [Bin/Amiga/whdfetch.ini.sample](Bin/Amiga/whdfetch.ini.sample) | Fully annotated INI configuration sample |
+| [docs/whdfetch.ini.sample](docs/whdfetch.ini.sample) | Fully annotated INI configuration sample |
 | [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) | Architecture and data-flow overview |
 
 ---
@@ -159,8 +159,6 @@ make clean
 ```
 
 Output binary: `Bin/Amiga/whdfetch`
-
-For full build instructions and coding standards see
 
 ---
 

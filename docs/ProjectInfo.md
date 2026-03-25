@@ -1,124 +1,59 @@
-# whdfetch Session Instructions
+# whdfetch Project Information
 
-This document summarizes the features implemented during this chat session.
+Last updated: 2026-03-25
 
-## Scope Added In This Session
+This document is a hybrid reference for project-level orientation and stable runtime contracts.
+Use it to understand how whdfetch is structured and which file/marker/index behaviors are
+considered authoritative.
 
-- Integrated archive extraction into the main download flow.
-- Added archive-type-aware extraction support for both `.lha` and `.lzx` files.
-- Added extraction configuration via CLI and INI.
-- Added startup validation for extraction requirements.
-- Added `ArchiveName.txt` metadata writing after successful extraction.
-- Added skip-if-already-extracted logic before extraction.
-- Added pre-download skip logic using existing extraction markers to avoid slow re-downloads.
-- Added `.archive_index` per-letter cache files to replace expensive full directory scans.
-- Added automatic migration path that can build `.archive_index` from existing `ArchiveName.txt` markers.
-- Added stale-entry handling for `.archive_index` when users manually delete extracted folders.
-- Added cache lifecycle hooks: runtime update after successful extraction and flush on shutdown.
-- Added force/override flags for both download and extraction skip systems.
-- Updated help text, sample INI, and README documentation.
-- Added session report module to persist end-of-run archive activity.
-- Added NEW vs UPDATED classification for successfully downloaded archives using strict metadata identity + version progression.
-- Added local-cache reuse tracking (explicitly recorded as no-download activity).
-- Added explicit runtime log line when local archive cache is reused.
-- Fixed `FORCEDOWNLOAD` behavior so it bypasses local-archive short-circuit and truly forces HTTP fetch.
-- Added extraction-skip reporting in session updates (including clear UnLZX install guidance when `.lzx` extraction is skipped).
-- Added queued download counters with global pre-count and per-download `Download X of Y` status.
-- Added queued size tracking from DAT metadata and `MB left` display.
-- Added `DISABLECOUNTERS` CLI/INI switch to disable current and future counter-style output.
-- Added DAT list metadata persistence in TSV form (`name<TAB>size<TAB>crc`) with backward compatibility for legacy name-only lines.
-- Added unified retry handling for network and CRC mismatch failures under one attempt budget.
-- Added download-failure reporting section in updates reports (with per-pack and total failure counts).
-- Added explicit CRC status output during archive processing (`CRC OK` / `CRC failed`) regardless of `VERBOSE` mode.
-- Added `CRCCHECK` CLI and INI setting (`crccheck` / `crc_check`) to enable CRC verification (default OFF).
-- Added startup console status line showing CRC mode (`ON` or `OFF`) to surface feature availability.
+## Audience and Scope
 
-## New Runtime Behavior
+Audience:
 
-1. Download completes successfully.
-2. If extraction is enabled, archive extraction is attempted.
-   - `.lha` archives are extracted with `c:lha`.
-   - `.lzx` archives are extracted with `c:unlzx` when available.
-   - If `c:unlzx` is missing, `.lzx` archives are skipped with a warning and processing continues.
-3. If marker-based extraction skip is enabled and marker matches, extraction is skipped.
-4. If pre-download marker skip is enabled and marker matches, download is skipped before the direct HTTP download runs.
-5. For heuristic misses, pre-download skip now checks `.archive_index` first (fast lookup) instead of scanning every subfolder.
-6. If index lookup points to a folder that no longer exists, the stale index entry is removed and normal download/extract continues.
-7. After successful extraction and metadata write, `.archive_index` is updated in memory and flushed safely during shutdown.
-8. If an archive already exists in `GameFiles/...` and `FORCEDOWNLOAD` is **not** set, the tool can reuse that local archive for extraction/recovery instead of HTTP download.
-9. Local archive reuse is now visible in two places:
-   - Runtime log (`download: reused local archive cache ... (no HTTP download)`)
-   - Session report section `Local cache reuse (no download)`
-10. If `FORCEDOWNLOAD` is set, local archive short-circuit is bypassed and network download path is used.
-11. Session report file is written at end of run when any reportable activity exists, grouped by pack with totals.
+- New contributors who need a concise architecture and behavior overview.
+- Maintainers who need exact runtime contracts and recovery semantics.
 
-12. UPDATED detection now uses strict identity matching, not title-prefix matching.
-13. Archives with missing or non-numeric version tokens are always treated as `New` (never `Updated`).
+In scope:
 
-## Session Report System (What Users See)
+- Core architecture and runtime data flow.
+- Marker/index contracts that drive skip/extract/download behavior.
+- Recovery and fallback behavior that affects correctness or performance.
+
+Out of scope:
+
+- Full CLI argument reference (see `docs/CLI_Reference.md`).
+- End-user walkthroughs and usage examples (see `README.md` and `docs/Manual/manual.md`).
+
+## Canonical Document Map
+
+- Project quick start and user setup: `README.md`
+- Architecture summary and feature map: `PROJECT_OVERVIEW.md`
+- Complete command/flag behavior and precedence: `docs/CLI_Reference.md`
+- User manual content: `docs/Manual/manual.md`
+- Sample INI configuration: `docs/whdfetch.ini.sample`
+
+## Project Snapshot
+
+`whdfetch` is a CLI tool for AmigaOS that downloads Retroplay WHDLoad packs, parses DAT entries,
+fetches matching archives, and optionally extracts them into a managed local structure.
+
+Core pipeline:
+
+1. Download and parse pack index/list data.
+2. Build candidate archive list from DAT metadata.
+3. Apply filters and skip logic.
+4. Download archives (or reuse local archive cache when valid).
+5. Extract archives when enabled and allowed.
+6. Write/update marker and index state.
+7. Emit session report and flush runtime caches on shutdown.
+
+## Runtime Contracts
+
+### `ArchiveName.txt` Marker Contract
 
 Purpose:
 
-- Persist a clear, human-readable record of what changed in a run.
-- Distinguish real network download activity from local recovery/re-extraction activity.
-
-Location:
-
-- `PROGDIR:updates/updates_YYYY-MM-DD_HH-MM-SS.txt`
-
-Current categories:
-
-- `New` — newly downloaded archives with no strict identity/version update match.
-- `Updated` — downloaded archives that match an existing strict identity and have a higher version.
-- `Local cache reuse (no download)` — archive handled from existing local `GameFiles` cache.
-- `Extraction skipped` — archive extraction intentionally skipped (for example when `c:unlzx` is missing for `.lzx`).
-
-### How UPDATED filenames are detected
-
-Update classification is performed from the in-memory `.archive_index` cache at download time,
-before extraction updates the cache entry.
-
-Strict identity fields (all must match):
-
-- `title`
-- `special` (cracker/group/special token segment)
-- `machineType`
-- `videoFormat`
-- `language`
-- `mediaFormat`
-- `sps`
-- `numberOfDisks`
-
-Version rule:
-
-- Candidate old archive is considered an update source only when the new filename version is
-   strictly greater than the old filename version.
-- If multiple matching old candidates exist, the highest older version is selected as the
-   `(was ...)` source in the report.
-
-Missing-version hardening:
-
-- If the new archive has no numeric version token, it is treated as `New`.
-- If a cached old candidate has no numeric version token, it is ignored for update matching.
-
-Why this change was made:
-
-- Prevent false updates where many different releases share the same primary title prefix
-   (for example multiple `Megademo_*` variants by different groups).
-
-Console behavior:
-
-- Prints report path and category totals when report data exists.
-- Prints `No new archives this session.` only when no reportable entries were collected.
-
-Why this benefits users:
-
-- Removes ambiguity between "downloaded from server" and "processed from local cache".
-- Makes troubleshooting easier when expected downloads do not occur.
-- Gives a persistent session audit trail for later review/manual updates.
-- Helps users understand whether content changed due to network updates or local marker/index recovery.
-
-## Marker File Contract
+- Authoritative extraction marker for skip decisions.
 
 Path format:
 
@@ -127,353 +62,170 @@ Path format:
 File format:
 
 - Line 1: category text (for example `Games` or `Games (Beta & Unofficial)`).
-- Line 2: exact archive filename (for example `AbuSimbelProfanation_v1.0_AGA.lha` or `Mnemonics_v1.0_AGA_Haujobb.lzx`).
+- Line 2: exact archive filename (for example `AbuSimbelProfanation_v1.0_AGA.lha`).
 
-Matching rule:
+Match rule:
 
 - Exact case-sensitive match against line 2.
 
-## Archive Index Contract (`.archive_index`)
+### `.archive_index` Cache Contract
 
 Purpose:
 
-- Accelerate pre-download skip checks when archive filename heuristics do not match the real extracted folder name.
-- Avoid repeated `ExNext()` + `ArchiveName.txt` reads across large letter folders on classic Amiga storage.
+- Fast lookup layer for pre-download/extraction checks when archive and folder names differ.
+- Performance optimization to avoid repeated folder scans and marker file reads.
 
 Path format:
 
 - `<target>/<pack>/<letter>/.archive_index`
 
-Examples:
-
-- `GameFiles/Games/A/.archive_index`
-- `Games:/Games/A/.archive_index` (when `EXTRACTTO` is active)
-
 File format:
 
-- One entry per line.
-- Two TAB-separated fields:
-   - Column 1: exact archive filename (for example `AcademyAGA_v1.0.lha`)
-   - Column 2: real extracted folder name (for example `Academy`)
+- One entry per line, two TAB-separated fields:
+  1. Exact archive filename
+  2. Extracted folder name
 
-Lookup rule:
+Lookup/update rules:
 
-- Exact case-sensitive match on column 1.
+- Lookup is exact case-sensitive on archive filename.
+- Existing archive entry updates the folder field.
+- New archive entry appends a new mapping.
 
-Write/update rule:
+Lifecycle:
 
-- If archive already exists in index: update folder field.
-- If archive is new: append entry.
+- Loaded on-demand during skip checks.
+- Reused in memory for the current run.
+- Updated after successful extraction + marker write.
+- Flushed during shutdown.
 
-Stale entry rule:
+Fallback and safety behavior:
 
-- If index maps to a folder that no longer exists, entry is removed and file is corrected on flush.
+- If missing/corrupt/unreadable, runtime falls back to scan-based behavior.
+- Malformed lines are skipped defensively.
+- If mapped folder no longer exists, stale entry is removed and corrected on flush.
+- `ArchiveName.txt` remains the compatibility authority; `.archive_index` is an optimization.
 
-## Incomplete Download Recovery (`.downloading` marker)
+### `.downloading` Incomplete Download Marker
 
 Purpose:
 
-- Detect and recover from interrupted downloads (Ctrl+C, network failures, crashes).
-- Without this, a partial `.lha` file left on disk would be treated as a valid archive on the
-  next run — extraction would fail, and the file would never be re-downloaded.
+- Detect partial archives from interrupted downloads and force clean recovery.
 
-How it works:
+Behavior:
 
-1. Before a download begins, an empty marker file is created alongside the archive:
-   `GameFiles/<pack>/<letter>/<archive>.downloading`
-2. If the download completes successfully, the marker is deleted immediately.
-3. If the download is interrupted (Ctrl+C, timeout, socket error), the marker and partial
-   archive both remain on disk.
-4. On the next run, before the normal "file already exists" skip check, the marker is detected.
-   The partial archive is deleted, the marker is removed, and the file is re-downloaded cleanly.
+1. Create `<archive>.downloading` before download starts.
+2. Remove marker after successful download.
+3. If interrupted, marker + partial archive remain.
+4. On next run, marker triggers cleanup and re-download.
 
-Non-retryable server errors (400, 401, 403, 404):
+Error-specific handling:
 
-- Both the marker and partial archive are deleted immediately after the error.
-- This prevents futile re-download attempts on every subsequent run for files that cannot be
-  obtained from the server.
+- For non-retryable HTTP errors (400/401/403/404), marker and partial archive are removed immediately.
 
-Marker file details:
-
-- Location: same directory as the `.lha` archive, named `<archive_filename>.downloading`
-- Example: `GameFiles/Games/A/Academy_v1.2.lha.downloading`
-- Content: empty (zero bytes) — only the file's existence matters.
-- The marker is never written to `.archive_index` or tracked in session reports.
-
-Edge cases:
-
-- If a user manually creates a `.downloading` file next to an archive, it will trigger
-  re-download of that archive on the next run.
-- If the partial `.lha` does not exist when recovery runs (e.g. user deleted it manually),
-  `DeleteFile` on a non-existent file is harmless — the marker is still cleaned up and the
-  download proceeds normally.
-
-## CLI Options Added/Active
-
-Extraction control:
-
-- `NOEXTRACT` disables extraction.
-- `EXTRACTTO=<path>` extracts to a separate destination.
-- `KEEPARCHIVES` keeps downloaded archives after extraction.
-- `DELETEARCHIVES` deletes downloaded archives after successful extraction.
-- `EXTRACTONLY` extracts already-downloaded archives from DAT lists.
-
-Extraction skip override:
-
-- `FORCEEXTRACT` forces extraction even when `ArchiveName.txt` already matches.
-
-Pre-download skip control:
-
-- `NODOWNLOADSKIP` disables marker-based pre-download skip.
-- `FORCEDOWNLOAD` always downloads even if a marker match is found.
-
-Maintenance commands (destructive, with confirmation prompts):
-
-- `PURGETEMP` permanently deletes `PROGDIR:temp` including all files and subfolders.
-- `PURGEARCHIVES` permanently deletes downloaded archives (`.lha` and `.lzx`) under `GameFiles` recursively.
-- `PURGEARCHIVES` does **not** delete extracted game folders.
-- Both commands print a brief warning and require explicit `Y` confirmation.
-
-Icon control:
-
-- `NOICONS` disables custom icon lookup and always uses the system default drawer icon.
-
-Counter and integrity control:
-
-- `DISABLECOUNTERS` disables queued pre-count and counter display output.
-- `CRCCHECK` enables CRC verification for downloaded archives when DAT CRC metadata is available.
-
-## Drawer Icons for Extracted Folders
-
-After each directory in the extraction hierarchy is created (base, pack, and letter folders), a
-Workbench drawer icon is written automatically so every folder appears correctly in Workbench.
-
-### Custom icon lookup
-
-If the folder `PROGDIR:Icons/` exists, whdfetch attempts to match the folder's leaf name
-against a `.info` file inside it before falling back to the system default drawer icon.
-
-Examples:
-- `PROGDIR:Icons/A.info` → used for all letter-`A` folders
-- `PROGDIR:Icons/Games Beta.info` → used for the Games Beta pack folder
-- `PROGDIR:Icons/extract.info` → used for the top-level extract root folder
-
-The match is case-insensitive (AmigaOS filesystem handles this automatically).  
-If no matching custom icon is found, `GetDefDiskObject(WBDRAWER)` is used as the fallback.  
-If the `Icons` folder does not exist, custom lookup is silently skipped — the feature is
-effectively auto-enabled just by dropping the folder in place.
-
-An existing icon is never overwritten (the `.info` file is checked before any icon call is made).
-
-### WHDLoad game folder icons (`WHD folder.info`)
-
-WHDLoad archives typically ship their own MagicWB-style `.info` sidecar next to the game folder
-(e.g. `Alien3.info` beside `Alien3/`). Placing a file named exactly `WHD folder.info` inside
-`PROGDIR:Icons/` tells whdfetch to replace every such icon after extraction:
-
-1. After LHA extraction completes successfully, the resolved game folder name is known
-   (e.g. `Alien3`).
-2. If `PROGDIR:Icons/WHD folder.info` exists, the existing `Alien3.info` (if any) is replaced:
-   - `SetProtection` is called on the existing icon to clear all protection bits.
-   - The icon is deleted.
-   - The template is loaded with `GetDiskObject` and written via `PutDiskObject` under the game
-     folder name.
-3. If `SetProtection` or `DeleteFile` fails (e.g. read-only volume), the replacement is skipped
-   **gracefully** — the archive extraction result is unaffected.
-4. The template file itself is never modified; a fresh copy is loaded from disk for every game.
-5. If `PROGDIR:Icons/WHD folder.info` is absent, behaviour is unchanged (existing icons kept).
-
-### Unsnapshot copied custom icons
-
-If copied icons contain saved Workbench snapshot coordinates, Workbench can draw many icons at
-the same position. whdfetch now clears saved icon positions after each successful copy from
-`PROGDIR:Icons/` by calling `strip_icon_position()` on the destination icon.
-
-Scope:
-- Applies to structural custom drawer icons copied from `PROGDIR:Icons/<name>.info`.
-- Applies to copied `WHD folder.info` replacements for extracted game folders.
-- Does not alter icons that were not copied from `PROGDIR:Icons/`.
-
-Failure handling:
-- Unsnapshot failures are logged as warnings.
-- Extraction continues; this is non-fatal.
-
-Control:
-- `unsnapshot_icons=true|false` in INI only (no CLI flag).
-
-### Disabling custom icons
-
-Custom icons (both drawer icons and the WHD folder template) can be disabled in two ways:
-
-- Pass `NOICONS` on the CLI — forces `use_custom_icons = FALSE` for that run.
-- Set `use_custom_icons=false` in `whdfetch.ini` — persists across all runs.
-
-When disabled, the system default drawer icon is always used for structural folders, and
-`WHD folder.info` replacement is never attempted.
-
-## INI Keys Added/Active (`[global]`)
-
-- `extract_archives=true|false`
-- `skip_existing_extractions=true|false`
-- `skip_download_if_extracted=true|false`
-- `force_download=true|false`
-- `extract_path=`
-- `delete_archives_after_extract=true|false`
-- `use_custom_icons=true|false`
-- `unsnapshot_icons=true|false`
-- `disable_counters=true|false`
-- `crccheck=true|false` (alias: `crc_check=true|false`)
-
-## Default Settings
-
-- `extract_archives = true`
-- `skip_existing_extractions = true`
-- `skip_download_if_extracted = true`
-- `force_extract = false` (CLI-only runtime flag)
-- `force_download = false`
-- `delete_archives_after_extract = true`
-- `extract_path = (empty / in-place)`
-- `use_custom_icons = true`
-- `unsnapshot_icons = true`
-- `disable_counters = false`
-- `crccheck = false`
-
-## Skip Logic Details
+## Skip and Extraction Semantics
 
 Extraction skip (post-download):
 
-- Uses resolved target directory.
-- Tries heuristic folder name first.
-- Compares `ArchiveName.txt` line 2 with incoming archive filename.
-- Skips extraction on exact match unless `FORCEEXTRACT` is set.
+- Uses resolved target path.
+- Checks marker compatibility (`ArchiveName.txt` line 2 exact match).
+- Skips extraction unless overridden by `FORCEEXTRACT`.
 
-Pre-download skip (before direct HTTP download):
+Pre-download skip (before HTTP download):
 
-- Uses same resolved target directory logic.
-- First checks whether the archive already exists in local `GameFiles/...` cache (fast local reuse path).
-- Tries heuristic folder marker first.
-- Tier 2 now uses `.archive_index` lookup first (fast path).
-- If `.archive_index` cannot be loaded, fallback scan still uses child folders + `ArchiveName.txt` markers.
-- Skips download on exact marker match unless `FORCEDOWNLOAD` is set or `NODOWNLOADSKIP` is used.
-- With current behavior, `FORCEDOWNLOAD` also bypasses local `GameFiles` archive reuse and forces HTTP fetch.
+- Checks local archive cache reuse path first.
+- Uses heuristic marker path first.
+- Uses `.archive_index` fast lookup for heuristic misses.
+- Falls back to scan-based behavior if index is unavailable.
+- Skip decision can be overridden by `NODOWNLOADSKIP`.
+- `FORCEDOWNLOAD` bypasses both marker-based skip and local archive cache reuse.
 
-### Why this was changed
+## Extraction and Icon Behavior
 
-- The old Tier 2 fallback scanned all subfolders in a letter directory whenever the heuristic failed.
-- Heuristic misses are common (archive filename and folder name often differ), so full scans happened frequently.
-- On Amiga HDD/CF media, repeated directory traversal and file opens are expensive and significantly slow full pack checks.
-- `.archive_index` turns this into one file load per letter and then in-memory lookups, while keeping safe fallback behavior.
+Extraction behavior:
 
-## Archive Index Lifecycle
+- `.lha` extraction uses `c:lha`.
+- `.lzx` extraction uses `c:unlzx` when present.
+- Missing `c:unlzx` skips `.lzx` extraction with warning; processing continues.
 
-Load path:
+Icon behavior:
 
-- Called during pre-download skip checks after heuristic mismatch.
-- If cache for target letter directory is already loaded, reuse it.
-- If no index file exists, migration build can scan existing `ArchiveName.txt` markers and create index data.
+- Structural folders can use custom icons from `PROGDIR:Icons/` when enabled.
+- Default fallback is system drawer icon (`GetDefDiskObject(WBDRAWER)`).
+- Existing icons are not overwritten by structural icon placement.
+- Optional `PROGDIR:Icons/WHD folder.info` can replace extracted game folder icons.
+- When configured, copied icons are unsnapshotted to clear saved Workbench positions.
 
-Update path:
+Control:
 
-- Called after successful extraction and successful `ArchiveName.txt` write.
-- Updates in-memory cache immediately so subsequent checks in same run benefit without extra disk I/O.
+- Disable custom icons with CLI `NOICONS` or INI `use_custom_icons=false`.
+- Unsnapshot control is INI-only: `unsnapshot_icons=true|false`.
 
-Flush path:
+## Session Report Contract
 
-- Called on shutdown.
-- Persists dirty cache to `.archive_index`.
-- Designed to keep extraction flow non-fatal: failure to write index logs a warning but does not invalidate extraction result.
+Purpose:
 
-## Reliability and Recovery Notes
+- Persist a run summary that distinguishes network downloads from local cache/recovery activity.
 
-- `.archive_index` is an optimization layer; `ArchiveName.txt` remains the authoritative compatibility marker.
-- If index file is missing/corrupt/unreadable, runtime falls back safely (scan path or normal download/extract behavior).
-- Malformed index lines are skipped defensively.
-- Manual folder deletion is handled by stale-entry removal when folder verification fails.
-- Feature is transparent with and without `EXTRACTTO` because target directory resolution is shared.
+Location:
 
-## Developer Notes (for future manual writing)
+- `PROGDIR:updates/updates_YYYY-MM-DD_HH-MM-SS.txt`
 
-Code integration points:
+Categories:
 
-- `extract_is_archive_already_extracted()`:
-   - Tier 1 heuristic unchanged.
-   - Tier 2 now index-first with folder existence verification and stale cleanup.
-- `extract_process_downloaded_archive()`:
-   - Calls index update after metadata write succeeds.
-- `do_shutdown()`:
-   - Flushes extract index cache before INI cleanup/log shutdown.
+- `New`
+- `Updated`
+- `Local cache reuse (no download)`
+- `Extraction skipped`
 
-Design intent:
+Update classification:
 
-- Keep correctness equivalent to prior logic.
-- Improve speed on large libraries.
-- Ensure failures in index handling never block core download/extract operations.
+- Uses strict identity fields from parsed metadata, then version progression.
+- Missing/non-numeric version tokens are treated as `New` for classification safety.
 
-## Startup Validation Added
+## Startup Validation
 
-If extraction is enabled:
+When extraction is enabled:
 
 - `c:lha` must exist.
 - `extract_path` (if set) must exist.
 - `extract_path` (if set) must be writable.
 
-If validation fails, startup exits with an error.
+Validation failure aborts startup with an error.
 
-## Example Commands
+## Integration Points
 
-Default behavior with extraction and marker-based skip systems:
+Primary code anchors:
 
-```text
-whdfetch DOWNLOADBETAGAMES EXTRACTTO=Games: KEEPARCHIVES
-```
+- `extract_is_archive_already_extracted()`
+- `extract_process_downloaded_archive()`
+- `do_shutdown()`
 
-Force extraction even if marker matches:
+Responsibilities:
 
-```text
-whdfetch DOWNLOADBETAGAMES EXTRACTTO=Games: KEEPARCHIVES FORCEEXTRACT
-```
-
-Force download even if already extracted marker matches:
-
-```text
-whdfetch DOWNLOADBETAGAMES EXTRACTTO=Games: KEEPARCHIVES FORCEDOWNLOAD
-```
-
-Disable only pre-download marker skip:
-
-```text
-whdfetch DOWNLOADBETAGAMES EXTRACTTO=Games: KEEPARCHIVES NODOWNLOADSKIP
-```
-
-Extract existing local archives only:
-
-```text
-whdfetch DOWNLOADBETAGAMES EXTRACTONLY EXTRACTTO=Games: KEEPARCHIVES
-```
-
-## Notes
-
-- Folder names inside archives are not assumed to match archive filename prefixes.
-- Marker matching is authoritative for skip decisions.
-- If marker file is missing or unreadable, normal download/extract flow continues.
+- Skip logic combines marker, index, and fallback behavior.
+- Extraction success path updates marker/index state.
+- Shutdown persists dirty index state and performs final cleanup.
 
 ## Known Limitations
 
 ### No pre-download "what's new" preview
 
-whdfetch currently has no way to show the user what new or updated archives are
-available on the server *before* downloading and applying them. The session report
-(`PROGDIR:updates/updates_*.txt`) classifies each downloaded archive as NEW or UPDATED,
-but this information is only available *after* the download run completes.
+The tool currently cannot report new/updated server content before downloading.
+Classification is available only after a run through the session report.
 
-This means the user cannot:
-- Preview what would be downloaded without actually downloading it
-- Selectively skip individual new archives before they are fetched
+Current workaround:
 
-**Workaround:** Use the existing skip filter flags (`SKIPAGA`, `SKIPCD`, `SKIPNTSC`,
-`SKIPNONENGLISH`) to exclude broad categories of content before running. Review the
-session report after each run to see exactly what was added or updated.
+- Use filter flags to limit candidate content.
+- Review generated updates report after each run.
 
-**Future release:** A dry-run preview mode is planned that will compare the latest
-server DAT files against the local archive index and produce a report of what would be
-downloaded — without actually fetching any archives or modifying local state.
+Planned direction:
+
+- Dry-run preview mode that compares server DAT metadata with local index state without modifying local files.
+
+## Documentation Maintenance Rule
+
+To prevent documentation drift:
+
+- Keep CLI option details in `docs/CLI_Reference.md`.
+- Keep onboarding and usage walkthroughs in `README.md` and manual docs.
+- Keep runtime contracts and architectural behavior in this file.
