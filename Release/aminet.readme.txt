@@ -1,0 +1,71 @@
+Short:        Downloads WHDLoad packs from Retroplay
+Uploader:     kwezza@gmail.com (Kerry Thompson)
+Author:       Kerry Thompson
+Type:         util/misc
+Version:      0.9b
+Architecture: m68k-amigaos >= 3.0.0
+Requires:     util/arc/UnZip.lha, util/arc/lha,util/arc/lzx121r1.lha
+Distribution: Aminet
+
+whdfetch - Retroplay WHDLoad Downloader for AmigaOS
+===================================================
+
+whdfetch is a CLI tool for AmigaOS 3.0+ that automates downloading,
+extracting, and organising WHDLoad game, demo, and magazine packs from
+the Retroplay collection on the Turran FTP server.  On a subsequent run
+it compares what is already installed against the latest pack listings
+and downloads only what is new or updated.
+
+
+Features
+--------
+
+  - Downloads Games, Demos, Magazines, and Beta packs from Retroplay
+  - Compares installed titles against current DAT listings - only new
+    or updated archives are downloaded
+  - Disk space estimator before committing to a download
+  - Chipset and region filters (AGA, CD32/CDTV, NTSC, non-English)
+  - Automatic extraction via c:lha or c:unlzx
+  - Optional drawer icon replacement after extraction
+  - INI file for persistent settings; all options overridable from CLI
+  - Runs on any 68000+ AmigaOS 3.0+ machine; prefers Fast RAM
+
+
+Quick Start
+-----------
+
+Before committing to a large download, check how much disk space you
+will need:
+
+  whdfetch ESTIMATESPACE
+
+This downloads the latest DAT files, reads the archive sizes, and prints
+an estimate without downloading any game archives. It also accepts filter
+flags so the estimate reflects your actual setup:
+
+  whdfetch ESTIMATESPACE SKIPAGA SKIPCD SKIPNTSC SKIPNONENGLISH
+
+When you are ready to start, try the smallest pack first to verify that
+downloading, extracting, and folder creation all work correctly on your
+system:
+
+  whdfetch DOWNLOADBETADEMOS EXTRACTTO=Work:WHDLoad/
+
+EXTRACTTO redirects extracted files to a separate volume while keeping
+the downloaded archives in the GameFiles folder alongside whdfetch. Once
+you are satisfied, move on to the larger packs:
+
+  whdfetch DOWNLOADGAMES EXTRACTTO=Work:WHDLoad/
+
+
+
+This is very much in its early days of development, so feedback is
+very welcome. If you have any suggestions or find any bugs,
+please let me know by email or at the projects home page on GitHub:
+www.github.com/Kwezza/WHDFetch
+
+License
+-------
+
+This software is freeware for personal use.
+

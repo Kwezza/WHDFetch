@@ -2,7 +2,7 @@
 
 `whdfetch` is a CLI tool for AmigaOS 3.0+ that automates downloading, extracting, and organising
 [WHDLoad](http://www.whdload.de/) game, demo, and magazine packs from the
-[Retroplay](http://turran.retroplay.org/) collection on the Turran FTP server.
+[Retroplay](https://ftp2.grandis.nu/turran/FTP/Retroplay%20WHDLoad%20Packs/) collection on the Turran FTP server.
 
 After rebuilding my Amiga, one of the most time-consuming jobs was manually browsing the
 Retroplay site, downloading every pack, extracting archives, and keeping everything
