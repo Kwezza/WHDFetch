@@ -136,10 +136,12 @@ A fully annotated sample is provided at [docs/whdfetch.ini.sample](docs/whdfetch
 
 | File | Contents |
 |------|----------|
-| [docs/Manual/manual.md](docs/Manual/manual.md) | Full user manual — getting started, how it works, all options explained in prose |
-| [docs/CLI_Reference.md](docs/CLI_Reference.md) | Complete CLI argument reference |
-| [docs/whdfetch.ini.sample](docs/whdfetch.ini.sample) | Fully annotated INI configuration sample |
-| [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) | Architecture and data-flow overview |
+| [Project page](https://madeforworkbench.com/products/whdfetch.html) | Lightweight project page for WHDFetch, written to stay usable on Amiga browsers including IBrowse setups |
+| [HTML manual](https://madeforworkbench.com/docs/whdfetch-manual.html) | Lightweight online manual version for browser reading, including older Amiga browsing setups |
+| [docs/Manual/manual.md](docs/Manual/manual.md) | Full user manual in Markdown form — getting started, behaviour, and options explained in prose |
+| [docs/CLI_Reference.md](docs/CLI_Reference.md) | Complete command-line argument reference |
+| [docs/whdfetch.ini.sample](docs/whdfetch.ini.sample) | Fully annotated sample INI configuration |
+| [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) | Internal architecture and data-flow overview |
 
 ---
 
