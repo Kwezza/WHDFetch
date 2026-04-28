@@ -128,6 +128,45 @@ Observed metric impact after adding group_hash to VhCandidate:
 Notes:
 - No intentional selection-logic behavior change; grouping order in reports may differ when hash-order differs from lexical-only order, while selected winners remain unchanged.
 
+## Phase 5 Compact Candidate Ingest
+
+- Objective status:
+  - Candidate ingest now stores compact selection records only; full parsed filename payload is no longer resident in each candidate.
+  - Selection and report paths now parse on demand from archive names in the string pool.
+- Files updated:
+  - tools/variant_harness/src/vh_group.h
+  - tools/variant_harness/src/vh_group.c
+  - tools/variant_harness/src/vh_score.h
+  - tools/variant_harness/src/vh_score.c
+  - tools/variant_harness/tests/expected/singleton_profile_exclude.report
+  - tools/variant_harness/tests/expected/language_cases.report
+- Structural changes:
+  - removed resident VhParsedName field from VhCandidate
+  - VhCandidateList now keeps parse context pointer for reparse-on-demand
+  - scoring API now accepts VhParsedName directly (vh_score_candidate)
+- Behavior notes:
+  - selected outputs and reject reasons remain aligned with prior behavior in baseline tests
+  - report token sections are produced by reparsing selected entries for the active group
+
+Measured Phase 5 result snapshot (full Games list: Bin/Amiga/temp/Dat files/Games(2026-04-17).txt):
+- candidate_count: 3973
+- candidate_struct_size_bytes: 156
+- candidate_lite_struct_size_bytes: 20
+- candidate_lite_array_bytes: 79460
+- candidate_full_array_bytes: 619788
+- order_array_bytes: 15892
+- string_pool_bytes: 212286
+- estimated_selector_peak_bytes: 307638 (~300.43 KiB)
+- peak_memory_estimate_bytes: 1192522 (~1.14 MiB)
+
+Impact vs previous full-path estimate (Phase 4 peak: 18578370):
+- reduced to 1192522 bytes
+- reduction: ~93.58%
+
+Notes:
+- This completes the primary Phase 5 objective: compact resident candidate storage with selection/report operating from reparsed details.
+- Remaining gap to long-term target is Phase 6 policy/flow optimization (parse only duplicate groups and policy-scoped singleton parse).
+
 ## 1. End-to-End Runtime Flow
 
 1. main.c run_selection loads CSV parse context (vh_parse_context_load).

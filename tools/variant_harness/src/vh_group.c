@@ -113,6 +113,8 @@ int vh_group_load_candidates(VhCandidateList *list, const char *listfile, const 
         return 0;
     }
 
+    list->parse_ctx = ctx;
+
     fp = fopen(listfile, "r");
     if (fp == NULL) {
         vh_string_pool_free(&list->strings);
@@ -132,10 +134,6 @@ int vh_group_load_candidates(VhCandidateList *list, const char *listfile, const 
         memset(&candidate, 0, sizeof(candidate));
 
         if (!vh_parse_group_key(line, group_key, sizeof(group_key), &group_hash)) {
-            continue;
-        }
-
-        if (!vh_parse_filename(ctx, line, &candidate.parsed)) {
             continue;
         }
 
@@ -171,6 +169,23 @@ void vh_group_free_candidates(VhCandidateList *list)
     list->items = NULL;
     list->count = 0;
     list->capacity = 0;
+    list->parse_ctx = NULL;
+}
+
+static int vh_parse_candidate(const VhCandidateList *list, const VhCandidate *candidate, VhParsedName *out)
+{
+    const char *archive_name;
+
+    if (list == NULL || candidate == NULL || out == NULL || list->parse_ctx == NULL) {
+        return 0;
+    }
+
+    archive_name = vh_candidate_archive_name(list, candidate);
+    if (archive_name[0] == '\0') {
+        return 0;
+    }
+
+    return vh_parse_filename(list->parse_ctx, archive_name, out);
 }
 
 static int vh_compare_index_by_group(const VhCandidateList *list, int ia, int ib)
@@ -278,8 +293,17 @@ int vh_group_select_best(VhCandidateList *list, const VhProfile *profile)
             for (k = run_start; k < run_end; ++k) {
                 VhCandidate *candidate = &list->items[order[k]];
                 VhScoreResult score;
+                VhParsedName parsed;
 
-                vh_score_candidate(candidate, profile, &score);
+                if (!vh_parse_candidate(list, candidate, &parsed)) {
+                    candidate->rejected = 1;
+                    candidate->score = 0;
+                    vh_safe_copy(candidate->reject_reason, sizeof(candidate->reject_reason),
+                                 "parse failed");
+                    continue;
+                }
+
+                vh_score_candidate(&parsed, profile, &score);
                 candidate->score = score.score;
                 candidate->rejected = score.rejected;
                 if (score.rejected) {
@@ -343,19 +367,25 @@ static void vh_print_token_texts_or_none(const VhTokenList *list)
     printf("\n");
 }
 
-static int vh_candidate_token_count(const VhCandidate *candidate)
+static int vh_candidate_token_count(const VhCandidateList *list, const VhCandidate *candidate)
 {
+    VhParsedName parsed;
+
     if (candidate == NULL) {
         return 0;
     }
 
-    return candidate->parsed.chipset.count +
-           candidate->parsed.language.count +
-           candidate->parsed.memory.count +
-           candidate->parsed.video.count +
-           candidate->parsed.media.count +
-           candidate->parsed.special.count +
-           candidate->parsed.unknown.count;
+    if (!vh_parse_candidate(list, candidate, &parsed)) {
+        return 0;
+    }
+
+    return parsed.chipset.count +
+           parsed.language.count +
+           parsed.memory.count +
+           parsed.video.count +
+           parsed.media.count +
+           parsed.special.count +
+           parsed.unknown.count;
 }
 
 static void vh_print_memory_estimate(const VhCandidateList *list)
@@ -383,7 +413,7 @@ static void vh_print_memory_estimate(const VhCandidateList *list)
 
     for (i = 0; i < list->count; ++i) {
         total_filename_chars += strlen(vh_candidate_archive_name(list, &list->items[i]));
-        total_tokens += vh_candidate_token_count(&list->items[i]);
+        total_tokens += vh_candidate_token_count(list, &list->items[i]);
     }
 
     average_filename_length = (double)total_filename_chars / (double)list->count;
@@ -446,6 +476,8 @@ void vh_group_print_report(const VhCandidateList *list)
         {
             int k;
             const VhCandidate *selected_candidate = NULL;
+            VhParsedName selected_parsed;
+            int has_selected_parsed = 0;
 
             for (k = run_start; k < run_end; ++k) {
                 const VhCandidate *c = &list->items[order[k]];
@@ -487,15 +519,17 @@ void vh_group_print_report(const VhCandidateList *list)
                 }
 
                 printf("Recognised special tags:\n  ");
-                if (selected_candidate != NULL) {
-                    vh_print_token_texts_or_none(&selected_candidate->parsed.special);
+                if (selected_candidate != NULL &&
+                    vh_parse_candidate(list, selected_candidate, &selected_parsed)) {
+                    has_selected_parsed = 1;
+                    vh_print_token_texts_or_none(&selected_parsed.special);
                 } else {
                     printf("none\n");
                 }
 
                 printf("Unknown tokens:\n  ");
-                if (selected_candidate != NULL) {
-                    vh_print_token_texts_or_none(&selected_candidate->parsed.unknown);
+                if (has_selected_parsed) {
+                    vh_print_token_texts_or_none(&selected_parsed.unknown);
                 } else {
                     printf("none\n");
                 }

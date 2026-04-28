@@ -21,14 +21,14 @@ Unknown tokens:
 Memory estimate:
   candidate_count: 2
   average_filename_length: 37.00
-  candidate_struct_size_bytes: 4536
+  candidate_struct_size_bytes: 156
   candidate_lite_struct_size_bytes: 20
   candidate_lite_array_bytes: 40
-  candidate_full_array_bytes: 9072
+  candidate_full_array_bytes: 312
   order_array_bytes: 8
   parsed_token_count: 6
   parsed_token_storage_estimate_bytes: 408
   string_pool_bytes: 107
   estimated_selector_peak_bytes: 155
-  peak_memory_estimate_bytes: 9595
+  peak_memory_estimate_bytes: 835
 

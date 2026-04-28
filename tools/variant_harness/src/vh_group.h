@@ -43,7 +43,6 @@ typedef struct VhCandidate {
     int rejected;
     long score;
     char reject_reason[VH_MAX_REJECT_REASON];
-    VhParsedName parsed;
 } VhCandidate;
 
 typedef struct VhCandidateList {
@@ -51,6 +50,7 @@ typedef struct VhCandidateList {
     int count;
     int capacity;
     VhStringPool strings;
+    const VhParseContext *parse_ctx;
 } VhCandidateList;
 
 int vh_group_load_candidates(VhCandidateList *list, const char *listfile, const VhParseContext *ctx);

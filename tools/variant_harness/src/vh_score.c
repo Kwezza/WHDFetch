@@ -4,19 +4,19 @@
 #include <stdio.h>
 #include <string.h>
 
-static const VhTokenList *vh_candidate_list_for_field(const VhCandidate *candidate, VhProfileField field)
+static const VhTokenList *vh_parsed_list_for_field(const VhParsedName *parsed, VhProfileField field)
 {
-    if (candidate == NULL) {
+    if (parsed == NULL) {
         return NULL;
     }
 
     switch (field) {
-        case VH_PROFILE_FIELD_LANGUAGE: return &candidate->parsed.language;
-        case VH_PROFILE_FIELD_CHIPSET: return &candidate->parsed.chipset;
-        case VH_PROFILE_FIELD_VIDEO: return &candidate->parsed.video;
-        case VH_PROFILE_FIELD_MEMORY: return &candidate->parsed.memory;
-        case VH_PROFILE_FIELD_MEDIA: return &candidate->parsed.media;
-        case VH_PROFILE_FIELD_SPECIAL: return &candidate->parsed.special;
+        case VH_PROFILE_FIELD_LANGUAGE: return &parsed->language;
+        case VH_PROFILE_FIELD_CHIPSET: return &parsed->chipset;
+        case VH_PROFILE_FIELD_VIDEO: return &parsed->video;
+        case VH_PROFILE_FIELD_MEMORY: return &parsed->memory;
+        case VH_PROFILE_FIELD_MEDIA: return &parsed->media;
+        case VH_PROFILE_FIELD_SPECIAL: return &parsed->special;
         default: return NULL;
     }
 }
@@ -64,7 +64,7 @@ static int vh_best_include_rank(const VhTokenList *tokens, const VhIdList *inclu
     return best_rank;
 }
 
-void vh_score_candidate(const VhCandidate *candidate, const VhProfile *profile, VhScoreResult *out)
+void vh_score_candidate(const VhParsedName *parsed, const VhProfile *profile, VhScoreResult *out)
 {
     int field_index;
 
@@ -76,13 +76,13 @@ void vh_score_candidate(const VhCandidate *candidate, const VhProfile *profile, 
     out->rejected = 0;
     out->reject_reason[0] = '\0';
 
-    if (candidate == NULL || profile == NULL) {
+    if (parsed == NULL || profile == NULL) {
         return;
     }
 
     for (field_index = 0; field_index < VH_PROFILE_FIELD_COUNT; ++field_index) {
         const VhFieldRule *rule = &profile->rules[field_index];
-        const VhTokenList *tokens = vh_candidate_list_for_field(candidate, (VhProfileField)field_index);
+        const VhTokenList *tokens = vh_parsed_list_for_field(parsed, (VhProfileField)field_index);
         int i;
 
         if (tokens == NULL) {
