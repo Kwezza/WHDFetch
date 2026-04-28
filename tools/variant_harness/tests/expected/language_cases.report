@@ -1,0 +1,29 @@
+Group: gamea
+Selected:
+  GameA_v1.0_Fr.lha  score=300
+Skipped:
+  GameA_v1.0_En.lha  score=200
+  GameA_v1.0_FrDeEn.lha  score=300
+Recognised special tags:
+  none
+Unknown tokens:
+  none
+
+Group: gameb
+Selected:
+  GameB_v1.0_EnDe.lha  score=200
+Skipped:
+  GameB_v1.0_En.lha  score=200
+Recognised special tags:
+  none
+Unknown tokens:
+  none
+
+Memory estimate:
+  candidate_count: 5
+  average_filename_length: 18.20
+  candidate_struct_size_bytes: 4908
+  parsed_token_count: 8
+  parsed_token_storage_estimate_bytes: 544
+  peak_memory_estimate_bytes: 25104
+

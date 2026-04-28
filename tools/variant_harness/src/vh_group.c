@@ -1,0 +1,425 @@
+#include "vh_group.h"
+
+#include <ctype.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "vh_score.h"
+
+static int vh_safe_copy(char *dst, size_t dst_size, const char *src)
+{
+    size_t len;
+
+    if (dst == NULL || src == NULL || dst_size == 0) {
+        return 0;
+    }
+
+    len = strlen(src);
+    if (len >= dst_size) {
+        len = dst_size - 1;
+    }
+
+    memcpy(dst, src, len);
+    dst[len] = '\0';
+    return 1;
+}
+
+static void vh_trim_in_place(char *text)
+{
+    size_t len;
+    size_t start;
+    size_t end;
+
+    if (text == NULL || text[0] == '\0') {
+        return;
+    }
+
+    len = strlen(text);
+    start = 0;
+    while (start < len && isspace((unsigned char)text[start])) {
+        ++start;
+    }
+
+    end = len;
+    while (end > start && isspace((unsigned char)text[end - 1])) {
+        --end;
+    }
+
+    if (start > 0) {
+        memmove(text, text + start, end - start);
+    }
+    text[end - start] = '\0';
+}
+
+static int vh_candidate_list_append(VhCandidateList *list, const VhCandidate *candidate)
+{
+    VhCandidate *new_items;
+    int new_capacity;
+
+    if (list->count == list->capacity) {
+        new_capacity = (list->capacity == 0) ? 64 : list->capacity * 2;
+        new_items = (VhCandidate *)realloc(list->items, (size_t)new_capacity * sizeof(VhCandidate));
+        if (new_items == NULL) {
+            return 0;
+        }
+        list->items = new_items;
+        list->capacity = new_capacity;
+    }
+
+    list->items[list->count++] = *candidate;
+    return 1;
+}
+
+int vh_group_load_candidates(VhCandidateList *list, const char *listfile, const VhParseContext *ctx)
+{
+    FILE *fp;
+    char line[512];
+    int line_index;
+
+    if (list == NULL || listfile == NULL || ctx == NULL) {
+        return 0;
+    }
+
+    memset(list, 0, sizeof(*list));
+
+    fp = fopen(listfile, "r");
+    if (fp == NULL) {
+        return 0;
+    }
+
+    line_index = 0;
+
+    while (fgets(line, sizeof(line), fp) != NULL) {
+        VhCandidate candidate;
+
+        vh_trim_in_place(line);
+        if (line[0] == '\0' || line[0] == '#') {
+            continue;
+        }
+
+        memset(&candidate, 0, sizeof(candidate));
+
+        if (!vh_parse_filename(ctx, line, &candidate.parsed)) {
+            continue;
+        }
+
+        vh_safe_copy(candidate.archive_name, sizeof(candidate.archive_name), candidate.parsed.archive_name);
+        vh_safe_copy(candidate.group_key, sizeof(candidate.group_key), candidate.parsed.group_key);
+        candidate.original_index = line_index++;
+
+        if (!vh_candidate_list_append(list, &candidate)) {
+            fclose(fp);
+            vh_group_free_candidates(list);
+            return 0;
+        }
+    }
+
+    fclose(fp);
+    return 1;
+}
+
+void vh_group_free_candidates(VhCandidateList *list)
+{
+    if (list == NULL) {
+        return;
+    }
+
+    free(list->items);
+    list->items = NULL;
+    list->count = 0;
+    list->capacity = 0;
+}
+
+static int vh_compare_index_by_group(const VhCandidateList *list, int ia, int ib)
+{
+    int cmp = strcmp(list->items[ia].group_key, list->items[ib].group_key);
+
+    if (cmp != 0) {
+        return cmp;
+    }
+
+    if (list->items[ia].original_index < list->items[ib].original_index) {
+        return -1;
+    }
+    if (list->items[ia].original_index > list->items[ib].original_index) {
+        return 1;
+    }
+    return 0;
+}
+
+static void vh_sort_order_by_group(const VhCandidateList *list, int *order, int count)
+{
+    int a;
+    int b;
+
+    for (a = 0; a < count - 1; ++a) {
+        for (b = a + 1; b < count; ++b) {
+            if (vh_compare_index_by_group(list, order[a], order[b]) > 0) {
+                int t = order[a];
+                order[a] = order[b];
+                order[b] = t;
+            }
+        }
+    }
+}
+
+int vh_group_select_best(VhCandidateList *list, const VhProfile *profile)
+{
+    int *order;
+    int i;
+
+    if (list == NULL || profile == NULL || list->count <= 0) {
+        return 0;
+    }
+
+    order = (int *)malloc((size_t)list->count * sizeof(int));
+    if (order == NULL) {
+        return 0;
+    }
+
+    for (i = 0; i < list->count; ++i) {
+        list->items[i].selected = 0;
+        list->items[i].rejected = 0;
+        list->items[i].score = 0;
+        list->items[i].reject_reason[0] = '\0';
+        order[i] = i;
+    }
+
+    vh_sort_order_by_group(list, order, list->count);
+
+    i = 0;
+    while (i < list->count) {
+        int run_start = i;
+        int run_end = i + 1;
+
+        while (run_end < list->count &&
+               strcmp(list->items[order[run_start]].group_key, list->items[order[run_end]].group_key) == 0) {
+            ++run_end;
+        }
+
+        {
+            int k;
+            int winner = -1;
+            long best_score = 0;
+            int winner_original_index = 0;
+
+            for (k = run_start; k < run_end; ++k) {
+                VhCandidate *candidate = &list->items[order[k]];
+                VhScoreResult score;
+
+                vh_score_candidate(candidate, profile, &score);
+                candidate->score = score.score;
+                candidate->rejected = score.rejected;
+                if (score.rejected) {
+                    vh_safe_copy(candidate->reject_reason, sizeof(candidate->reject_reason), score.reject_reason);
+                }
+
+                if (candidate->rejected) {
+                    continue;
+                }
+
+                if (winner < 0 || candidate->score > best_score ||
+                    (candidate->score == best_score && candidate->original_index < winner_original_index)) {
+                    winner = order[k];
+                    best_score = candidate->score;
+                    winner_original_index = candidate->original_index;
+                }
+            }
+
+            if (winner >= 0) {
+                list->items[winner].selected = 1;
+            }
+        }
+
+        i = run_end;
+    }
+
+    free(order);
+    return 1;
+}
+
+void vh_group_print_selected(const VhCandidateList *list)
+{
+    int i;
+
+    if (list == NULL) {
+        return;
+    }
+
+    for (i = 0; i < list->count; ++i) {
+        if (list->items[i].selected) {
+            printf("%s\n", list->items[i].archive_name);
+        }
+    }
+}
+
+static void vh_print_token_texts_or_none(const VhTokenList *list)
+{
+    int i;
+
+    if (list == NULL || list->count == 0) {
+        printf("none\n");
+        return;
+    }
+
+    for (i = 0; i < list->count; ++i) {
+        if (i > 0) {
+            printf(", ");
+        }
+        printf("%s", list->items[i].text);
+    }
+    printf("\n");
+}
+
+static int vh_candidate_token_count(const VhCandidate *candidate)
+{
+    if (candidate == NULL) {
+        return 0;
+    }
+
+    return candidate->parsed.chipset.count +
+           candidate->parsed.language.count +
+           candidate->parsed.memory.count +
+           candidate->parsed.video.count +
+           candidate->parsed.media.count +
+           candidate->parsed.special.count +
+           candidate->parsed.unknown.count;
+}
+
+static void vh_print_memory_estimate(const VhCandidateList *list)
+{
+    int i;
+    size_t total_filename_chars;
+    long total_tokens;
+    size_t candidate_array_bytes;
+    size_t sort_order_bytes;
+    size_t token_storage_estimate_bytes;
+    size_t peak_memory_estimate_bytes;
+    double average_filename_length;
+
+    if (list == NULL || list->count <= 0) {
+        return;
+    }
+
+    total_filename_chars = 0;
+    total_tokens = 0;
+
+    for (i = 0; i < list->count; ++i) {
+        total_filename_chars += strlen(list->items[i].archive_name);
+        total_tokens += vh_candidate_token_count(&list->items[i]);
+    }
+
+    average_filename_length = (double)total_filename_chars / (double)list->count;
+    candidate_array_bytes = (size_t)list->count * sizeof(VhCandidate);
+    sort_order_bytes = (size_t)list->count * sizeof(int);
+    token_storage_estimate_bytes = (size_t)total_tokens * sizeof(VhFieldToken);
+    peak_memory_estimate_bytes = candidate_array_bytes + sort_order_bytes + token_storage_estimate_bytes;
+
+    printf("Memory estimate:\n");
+    printf("  candidate_count: %d\n", list->count);
+    printf("  average_filename_length: %.2f\n", average_filename_length);
+    printf("  candidate_struct_size_bytes: %u\n", (unsigned)sizeof(VhCandidate));
+    printf("  parsed_token_count: %ld\n", total_tokens);
+    printf("  parsed_token_storage_estimate_bytes: %u\n", (unsigned)token_storage_estimate_bytes);
+    printf("  peak_memory_estimate_bytes: %u\n\n", (unsigned)peak_memory_estimate_bytes);
+}
+
+void vh_group_print_report(const VhCandidateList *list)
+{
+    int i;
+    int *order;
+
+    if (list == NULL || list->count <= 0) {
+        return;
+    }
+
+    order = (int *)malloc((size_t)list->count * sizeof(int));
+    if (order == NULL) {
+        return;
+    }
+
+    for (i = 0; i < list->count; ++i) {
+        order[i] = i;
+    }
+
+    vh_sort_order_by_group(list, order, list->count);
+
+    i = 0;
+    while (i < list->count) {
+        int run_start = i;
+        int run_end = i + 1;
+        int any_rejected = 0;
+
+        while (run_end < list->count &&
+               strcmp(list->items[order[run_start]].group_key, list->items[order[run_end]].group_key) == 0) {
+            ++run_end;
+        }
+
+        {
+            int k;
+            const VhCandidate *selected_candidate = NULL;
+
+            for (k = run_start; k < run_end; ++k) {
+                const VhCandidate *c = &list->items[order[k]];
+                if (c->selected) {
+                    selected_candidate = c;
+                }
+                if (c->rejected) {
+                    any_rejected = 1;
+                }
+            }
+
+            if ((run_end - run_start) > 1 || any_rejected || selected_candidate == NULL) {
+                printf("Group: %s\n", list->items[order[run_start]].group_key);
+                printf("Selected:\n");
+                for (k = run_start; k < run_end; ++k) {
+                    const VhCandidate *c = &list->items[order[k]];
+                    if (c->selected) {
+                        printf("  %s  score=%ld\n", c->archive_name, c->score);
+                    }
+                }
+                if (selected_candidate == NULL) {
+                    printf("  none\n");
+                }
+
+                printf("Skipped:\n");
+                for (k = run_start; k < run_end; ++k) {
+                    const VhCandidate *c = &list->items[order[k]];
+                    if (!c->selected) {
+                        printf("  %s  score=%ld", c->archive_name, c->score);
+                        if (c->rejected) {
+                            if (c->reject_reason[0] != '\0') {
+                                printf("  rejected (%s)", c->reject_reason);
+                            } else {
+                                printf("  rejected");
+                            }
+                        }
+                        printf("\n");
+                    }
+                }
+
+                printf("Recognised special tags:\n  ");
+                if (selected_candidate != NULL) {
+                    vh_print_token_texts_or_none(&selected_candidate->parsed.special);
+                } else {
+                    printf("none\n");
+                }
+
+                printf("Unknown tokens:\n  ");
+                if (selected_candidate != NULL) {
+                    vh_print_token_texts_or_none(&selected_candidate->parsed.unknown);
+                } else {
+                    printf("none\n");
+                }
+                printf("\n");
+            }
+        }
+
+        i = run_end;
+    }
+
+    free(order);
+
+    vh_print_memory_estimate(list);
+}
