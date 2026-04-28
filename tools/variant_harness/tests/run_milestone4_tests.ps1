@@ -151,11 +151,21 @@ function Assert-CandidateCountAtLeast {
 }
 
 # Phase 2: regression baselines
+$phase1GroupingFalsePositiveSelect = Join-Path $outDir "phase1_grouping_false_positive.select"
+$phase1SingletonExcludeReport = Join-Path $outDir "phase1_singleton_exclude.report"
+$phase1MemorySlowResolve = Join-Path $outDir "phase1_memory_alias_slow.resolve"
+$phase1MemorySlowMemResolve = Join-Path $outDir "phase1_memory_alias_slowmem.resolve"
+
 $phase2GamesSelect = Join-Path $outDir "phase2_games_small_real.select"
 $phase2DemosSelect = Join-Path $outDir "phase2_demos_small_real.select"
 $phase2LanguageReport = Join-Path $outDir "phase2_language_cases.report"
 $phase3MemoryReport = Join-Path $outDir "phase3_games_memory_report.txt"
 $phase3StressReport = Join-Path $outDir "phase3_games_stress_report.txt"
+
+Write-CapturedOutput -OutputFile $phase1GroupingFalsePositiveSelect -CommandArgs @("--select", "tests/grouping_false_positive_cases.txt", "--profile", "default")
+Write-CapturedOutput -OutputFile $phase1SingletonExcludeReport -CommandArgs @("--report", "tests/singleton_profile_exclude_cases.txt", "--profile", "tests/profiles/phase1_singleton_exclude.profile")
+Write-CapturedOutput -OutputFile $phase1MemorySlowResolve -CommandArgs @("--resolve", "Memory", "Slow")
+Write-CapturedOutput -OutputFile $phase1MemorySlowMemResolve -CommandArgs @("--resolve", "Memory", "SlowMem")
 
 Write-CapturedOutput -OutputFile $phase2GamesSelect -CommandArgs @("--select", "tests/dat_samples/games_small_real.txt", "--profile", "default")
 Write-CapturedOutput -OutputFile $phase2DemosSelect -CommandArgs @("--select", "tests/dat_samples/demos_small_real.txt", "--profile", "default")
@@ -163,14 +173,24 @@ Write-CapturedOutput -OutputFile $phase2LanguageReport -CommandArgs @("--report"
 Write-CapturedOutput -OutputFile $phase3MemoryReport -CommandArgs @("--report", "tests/dat_samples/games_small_real.txt", "--profile", "default")
 Write-CapturedOutput -OutputFile $phase3StressReport -CommandArgs @("--report", "tests/dat_samples/games_stress_large.txt", "--profile", "default")
 
+Assert-FileMatchesExpected -Generated $phase1GroupingFalsePositiveSelect -Expected (Join-Path $root "tests/expected/grouping_false_positive.select")
+Assert-FileMatchesExpected -Generated $phase1SingletonExcludeReport -Expected (Join-Path $root "tests/expected/singleton_profile_exclude.report")
+Assert-FileMatchesExpected -Generated $phase1MemorySlowResolve -Expected (Join-Path $root "tests/expected/memory_alias_slow.resolve")
+Assert-FileMatchesExpected -Generated $phase1MemorySlowMemResolve -Expected (Join-Path $root "tests/expected/memory_alias_slowmem.resolve")
+
 Assert-FileMatchesExpected -Generated $phase2GamesSelect -Expected (Join-Path $root "tests/expected/games_small_real.select")
 Assert-FileMatchesExpected -Generated $phase2DemosSelect -Expected (Join-Path $root "tests/expected/demos_small_real.select")
 Assert-FileMatchesExpected -Generated $phase2LanguageReport -Expected (Join-Path $root "tests/expected/language_cases.report")
 Assert-FileContains -Path $phase3MemoryReport -Needle "Memory estimate:"
 Assert-FileContains -Path $phase3MemoryReport -Needle "candidate_count:"
 Assert-FileContains -Path $phase3MemoryReport -Needle "peak_memory_estimate_bytes:"
+Assert-FileContains -Path $phase3MemoryReport -Needle "candidate_lite_struct_size_bytes:"
+Assert-FileContains -Path $phase3MemoryReport -Needle "candidate_lite_array_bytes:"
+Assert-FileContains -Path $phase3MemoryReport -Needle "order_array_bytes:"
+Assert-FileContains -Path $phase3MemoryReport -Needle "estimated_selector_peak_bytes:"
 Assert-CandidateCountAtLeast -Path $phase3StressReport -Minimum 120
 
+Write-Host "Phase 1 baseline comparisons passed"
 Write-Host "Phase 2 baseline comparisons passed"
 Write-Host "Phase 3 memory estimate output present"
 Write-Host "Phase 3 stress candidate-count assertion passed"

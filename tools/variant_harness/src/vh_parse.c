@@ -173,6 +173,25 @@ static void vh_make_group_key(const char *title, char *group_key, size_t group_k
     group_key[out] = '\0';
 }
 
+static unsigned long vh_group_key_hash32(const char *group_key)
+{
+    const unsigned char *p;
+    unsigned long hash = 2166136261UL;
+
+    if (group_key == NULL) {
+        return 0UL;
+    }
+
+    p = (const unsigned char *)group_key;
+    while (*p != '\0') {
+        hash ^= (unsigned long)(*p++);
+        hash *= 16777619UL;
+        hash &= 0xFFFFFFFFUL;
+    }
+
+    return hash;
+}
+
 static int vh_try_language_compact_token(const VhCsvFile *language_csv, const char *token, VhTokenList *language)
 {
     size_t len;
@@ -351,6 +370,50 @@ int vh_parse_filename(const VhParseContext *ctx, const char *archive_name, VhPar
         }
 
         vh_token_list_add(&out->unknown, 0, token);
+    }
+
+    return 1;
+}
+
+int vh_parse_group_key(const char *archive_name,
+                       char *group_key_buf,
+                       size_t group_key_buf_size,
+                       unsigned long *out_hash)
+{
+    char work[VH_WORK_MAX];
+    size_t len;
+    char *sep;
+
+    if (archive_name == NULL || group_key_buf == NULL || group_key_buf_size == 0) {
+        return 0;
+    }
+
+    vh_safe_copy(work, sizeof(work), archive_name);
+    len = strlen(work);
+
+    if (len >= 4) {
+        char *ext = work + (len - 4);
+        if (vh_stricmp(ext, ".lha") == 0 || vh_stricmp(ext, ".lzx") == 0) {
+            *ext = '\0';
+        }
+    }
+
+    sep = strchr(work, '_');
+    if (sep != NULL) {
+        *sep = '\0';
+    }
+
+    vh_make_group_key(work, group_key_buf, group_key_buf_size);
+
+    if (group_key_buf[0] == '\0') {
+        if (out_hash != NULL) {
+            *out_hash = 0UL;
+        }
+        return 0;
+    }
+
+    if (out_hash != NULL) {
+        *out_hash = vh_group_key_hash32(group_key_buf);
     }
 
     return 1;

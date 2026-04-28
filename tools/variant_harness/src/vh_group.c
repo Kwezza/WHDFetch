@@ -25,6 +25,30 @@ static int vh_safe_copy(char *dst, size_t dst_size, const char *src)
     return 1;
 }
 
+static const char *vh_candidate_archive_name(const VhCandidateList *list, const VhCandidate *candidate)
+{
+    const char *name;
+
+    if (list == NULL || candidate == NULL) {
+        return "";
+    }
+
+    name = vh_string_pool_get(&list->strings, candidate->archive_name_off);
+    return (name != NULL) ? name : "";
+}
+
+static const char *vh_candidate_group_key(const VhCandidateList *list, const VhCandidate *candidate)
+{
+    const char *group_key;
+
+    if (list == NULL || candidate == NULL) {
+        return "";
+    }
+
+    group_key = vh_string_pool_get(&list->strings, candidate->group_key_off);
+    return (group_key != NULL) ? group_key : "";
+}
+
 static void vh_trim_in_place(char *text)
 {
     size_t len;
@@ -75,6 +99,8 @@ int vh_group_load_candidates(VhCandidateList *list, const char *listfile, const 
 {
     FILE *fp;
     char line[512];
+    char group_key[VH_MAX_TITLE_TEXT];
+    unsigned long group_hash;
     int line_index;
 
     if (list == NULL || listfile == NULL || ctx == NULL) {
@@ -83,8 +109,13 @@ int vh_group_load_candidates(VhCandidateList *list, const char *listfile, const 
 
     memset(list, 0, sizeof(*list));
 
+    if (!vh_string_pool_init(&list->strings)) {
+        return 0;
+    }
+
     fp = fopen(listfile, "r");
     if (fp == NULL) {
+        vh_string_pool_free(&list->strings);
         return 0;
     }
 
@@ -100,12 +131,22 @@ int vh_group_load_candidates(VhCandidateList *list, const char *listfile, const 
 
         memset(&candidate, 0, sizeof(candidate));
 
+        if (!vh_parse_group_key(line, group_key, sizeof(group_key), &group_hash)) {
+            continue;
+        }
+
         if (!vh_parse_filename(ctx, line, &candidate.parsed)) {
             continue;
         }
 
-        vh_safe_copy(candidate.archive_name, sizeof(candidate.archive_name), candidate.parsed.archive_name);
-        vh_safe_copy(candidate.group_key, sizeof(candidate.group_key), candidate.parsed.group_key);
+        if (!vh_string_pool_add(&list->strings, line, &candidate.archive_name_off) ||
+            !vh_string_pool_add(&list->strings, group_key, &candidate.group_key_off)) {
+            fclose(fp);
+            vh_group_free_candidates(list);
+            return 0;
+        }
+
+        candidate.group_hash = group_hash;
         candidate.original_index = line_index++;
 
         if (!vh_candidate_list_append(list, &candidate)) {
@@ -126,6 +167,7 @@ void vh_group_free_candidates(VhCandidateList *list)
     }
 
     free(list->items);
+    vh_string_pool_free(&list->strings);
     list->items = NULL;
     list->count = 0;
     list->capacity = 0;
@@ -133,7 +175,17 @@ void vh_group_free_candidates(VhCandidateList *list)
 
 static int vh_compare_index_by_group(const VhCandidateList *list, int ia, int ib)
 {
-    int cmp = strcmp(list->items[ia].group_key, list->items[ib].group_key);
+    int cmp;
+
+    if (list->items[ia].group_hash < list->items[ib].group_hash) {
+        return -1;
+    }
+    if (list->items[ia].group_hash > list->items[ib].group_hash) {
+        return 1;
+    }
+
+    cmp = strcmp(vh_candidate_group_key(list, &list->items[ia]),
+                 vh_candidate_group_key(list, &list->items[ib]));
 
     if (cmp != 0) {
         return cmp;
@@ -146,6 +198,25 @@ static int vh_compare_index_by_group(const VhCandidateList *list, int ia, int ib
         return 1;
     }
     return 0;
+}
+
+static int vh_is_same_group(const VhCandidateList *list, int ia, int ib)
+{
+    const VhCandidate *a;
+    const VhCandidate *b;
+
+    if (list == NULL || ia < 0 || ib < 0 || ia >= list->count || ib >= list->count) {
+        return 0;
+    }
+
+    a = &list->items[ia];
+    b = &list->items[ib];
+
+    if (a->group_hash != b->group_hash) {
+        return 0;
+    }
+
+    return strcmp(vh_candidate_group_key(list, a), vh_candidate_group_key(list, b)) == 0;
 }
 
 static void vh_sort_order_by_group(const VhCandidateList *list, int *order, int count)
@@ -194,7 +265,7 @@ int vh_group_select_best(VhCandidateList *list, const VhProfile *profile)
         int run_end = i + 1;
 
         while (run_end < list->count &&
-               strcmp(list->items[order[run_start]].group_key, list->items[order[run_end]].group_key) == 0) {
+               vh_is_same_group(list, order[run_start], order[run_end])) {
             ++run_end;
         }
 
@@ -249,7 +320,7 @@ void vh_group_print_selected(const VhCandidateList *list)
 
     for (i = 0; i < list->count; ++i) {
         if (list->items[i].selected) {
-            printf("%s\n", list->items[i].archive_name);
+            printf("%s\n", vh_candidate_archive_name(list, &list->items[i]));
         }
     }
 }
@@ -292,9 +363,14 @@ static void vh_print_memory_estimate(const VhCandidateList *list)
     int i;
     size_t total_filename_chars;
     long total_tokens;
+    size_t candidate_lite_array_bytes;
+    size_t candidate_full_array_bytes;
+    size_t order_array_bytes;
     size_t candidate_array_bytes;
     size_t sort_order_bytes;
     size_t token_storage_estimate_bytes;
+    size_t string_pool_bytes;
+    size_t estimated_selector_peak_bytes;
     size_t peak_memory_estimate_bytes;
     double average_filename_length;
 
@@ -306,22 +382,33 @@ static void vh_print_memory_estimate(const VhCandidateList *list)
     total_tokens = 0;
 
     for (i = 0; i < list->count; ++i) {
-        total_filename_chars += strlen(list->items[i].archive_name);
+        total_filename_chars += strlen(vh_candidate_archive_name(list, &list->items[i]));
         total_tokens += vh_candidate_token_count(&list->items[i]);
     }
 
     average_filename_length = (double)total_filename_chars / (double)list->count;
     candidate_array_bytes = (size_t)list->count * sizeof(VhCandidate);
     sort_order_bytes = (size_t)list->count * sizeof(int);
+    candidate_lite_array_bytes = (size_t)list->count * sizeof(VhCandidateLite);
+    candidate_full_array_bytes = candidate_array_bytes;
+    order_array_bytes = sort_order_bytes;
     token_storage_estimate_bytes = (size_t)total_tokens * sizeof(VhFieldToken);
-    peak_memory_estimate_bytes = candidate_array_bytes + sort_order_bytes + token_storage_estimate_bytes;
+    string_pool_bytes = (size_t)vh_string_pool_bytes_used(&list->strings);
+    estimated_selector_peak_bytes = candidate_lite_array_bytes + order_array_bytes + string_pool_bytes;
+    peak_memory_estimate_bytes = candidate_array_bytes + sort_order_bytes + token_storage_estimate_bytes + string_pool_bytes;
 
     printf("Memory estimate:\n");
     printf("  candidate_count: %d\n", list->count);
     printf("  average_filename_length: %.2f\n", average_filename_length);
     printf("  candidate_struct_size_bytes: %u\n", (unsigned)sizeof(VhCandidate));
+    printf("  candidate_lite_struct_size_bytes: %u\n", (unsigned)sizeof(VhCandidateLite));
+    printf("  candidate_lite_array_bytes: %u\n", (unsigned)candidate_lite_array_bytes);
+    printf("  candidate_full_array_bytes: %u\n", (unsigned)candidate_full_array_bytes);
+    printf("  order_array_bytes: %u\n", (unsigned)order_array_bytes);
     printf("  parsed_token_count: %ld\n", total_tokens);
     printf("  parsed_token_storage_estimate_bytes: %u\n", (unsigned)token_storage_estimate_bytes);
+    printf("  string_pool_bytes: %u\n", (unsigned)string_pool_bytes);
+    printf("  estimated_selector_peak_bytes: %u\n", (unsigned)estimated_selector_peak_bytes);
     printf("  peak_memory_estimate_bytes: %u\n\n", (unsigned)peak_memory_estimate_bytes);
 }
 
@@ -352,7 +439,7 @@ void vh_group_print_report(const VhCandidateList *list)
         int any_rejected = 0;
 
         while (run_end < list->count &&
-               strcmp(list->items[order[run_start]].group_key, list->items[order[run_end]].group_key) == 0) {
+               vh_is_same_group(list, order[run_start], order[run_end])) {
             ++run_end;
         }
 
@@ -371,12 +458,12 @@ void vh_group_print_report(const VhCandidateList *list)
             }
 
             if ((run_end - run_start) > 1 || any_rejected || selected_candidate == NULL) {
-                printf("Group: %s\n", list->items[order[run_start]].group_key);
+                printf("Group: %s\n", vh_candidate_group_key(list, &list->items[order[run_start]]));
                 printf("Selected:\n");
                 for (k = run_start; k < run_end; ++k) {
                     const VhCandidate *c = &list->items[order[k]];
                     if (c->selected) {
-                        printf("  %s  score=%ld\n", c->archive_name, c->score);
+                        printf("  %s  score=%ld\n", vh_candidate_archive_name(list, c), c->score);
                     }
                 }
                 if (selected_candidate == NULL) {
@@ -387,7 +474,7 @@ void vh_group_print_report(const VhCandidateList *list)
                 for (k = run_start; k < run_end; ++k) {
                     const VhCandidate *c = &list->items[order[k]];
                     if (!c->selected) {
-                        printf("  %s  score=%ld", c->archive_name, c->score);
+                        printf("  %s  score=%ld", vh_candidate_archive_name(list, c), c->score);
                         if (c->rejected) {
                             if (c->reject_reason[0] != '\0') {
                                 printf("  rejected (%s)", c->reject_reason);

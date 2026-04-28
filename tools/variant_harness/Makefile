@@ -9,8 +9,11 @@ SRCS := src/main.c \
 	src/vh_parse.c \
 	src/vh_profile.c \
 	src/vh_score.c \
-	src/vh_group.c
+	src/vh_group.c \
+	src/vh_string_pool.c
 OBJS := $(SRCS:.c=.o)
+STRING_POOL_TEST := tests/vh_string_pool_test
+PARSE_GROUP_KEY_TEST := tests/vh_parse_group_key_test
 
 .PHONY: all clean test
 
@@ -24,8 +27,16 @@ src/%.o: src/%.c
 
 test: $(TARGET)
 ifeq ($(OS),Windows_NT)
+	$(CC) $(CFLAGS) tests/test_vh_string_pool.c src/vh_string_pool.c -o $(STRING_POOL_TEST)
+	$(CC) $(CFLAGS) tests/test_vh_parse_group_key.c src/vh_parse.c src/vh_csv.c -o $(PARSE_GROUP_KEY_TEST)
+	powershell -NoProfile -Command "$$p='$(STRING_POOL_TEST).exe'; if (!(Test-Path -LiteralPath $$p)) { $$p='$(STRING_POOL_TEST)' }; & $$p; if ($$LASTEXITCODE -ne 0) { exit $$LASTEXITCODE }"
+	powershell -NoProfile -Command "$$p='$(PARSE_GROUP_KEY_TEST).exe'; if (!(Test-Path -LiteralPath $$p)) { $$p='$(PARSE_GROUP_KEY_TEST)' }; & $$p; if ($$LASTEXITCODE -ne 0) { exit $$LASTEXITCODE }"
 	powershell -NoProfile -ExecutionPolicy Bypass -File tests/run_milestone4_tests.ps1
 else
+	$(CC) $(CFLAGS) tests/test_vh_string_pool.c src/vh_string_pool.c -o $(STRING_POOL_TEST)
+	$(CC) $(CFLAGS) tests/test_vh_parse_group_key.c src/vh_parse.c src/vh_csv.c -o $(PARSE_GROUP_KEY_TEST)
+	./$(STRING_POOL_TEST)
+	./$(PARSE_GROUP_KEY_TEST)
 	./$(TARGET) --select tests/filenames_basic.txt --profile default > test_output/basic_select.txt
 	./$(TARGET) --report tests/filenames_basic.txt --profile default > test_output/basic_report.txt
 	./$(TARGET) --report tests/filenames_memory.txt --profile default > test_output/memory_report.txt
@@ -37,8 +48,12 @@ ifeq ($(OS),Windows_NT)
 clean:
 	-powershell -NoProfile -Command "if (Test-Path -LiteralPath '$(TARGET)') { Remove-Item -LiteralPath '$(TARGET)' -Force -ErrorAction SilentlyContinue }"
 	-powershell -NoProfile -Command "if (Test-Path -LiteralPath '$(TARGET).exe') { Remove-Item -LiteralPath '$(TARGET).exe' -Force -ErrorAction SilentlyContinue }"
+	-powershell -NoProfile -Command "if (Test-Path -LiteralPath '$(STRING_POOL_TEST)') { Remove-Item -LiteralPath '$(STRING_POOL_TEST)' -Force -ErrorAction SilentlyContinue }"
+	-powershell -NoProfile -Command "if (Test-Path -LiteralPath '$(STRING_POOL_TEST).exe') { Remove-Item -LiteralPath '$(STRING_POOL_TEST).exe' -Force -ErrorAction SilentlyContinue }"
+	-powershell -NoProfile -Command "if (Test-Path -LiteralPath '$(PARSE_GROUP_KEY_TEST)') { Remove-Item -LiteralPath '$(PARSE_GROUP_KEY_TEST)' -Force -ErrorAction SilentlyContinue }"
+	-powershell -NoProfile -Command "if (Test-Path -LiteralPath '$(PARSE_GROUP_KEY_TEST).exe') { Remove-Item -LiteralPath '$(PARSE_GROUP_KEY_TEST).exe' -Force -ErrorAction SilentlyContinue }"
 	-powershell -NoProfile -Command "Get-ChildItem -Path 'src/*.o' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue"
 else
 clean:
-	-rm -f $(TARGET) $(TARGET).exe src/*.o
+	-rm -f $(TARGET) $(TARGET).exe $(STRING_POOL_TEST) $(STRING_POOL_TEST).exe $(PARSE_GROUP_KEY_TEST) $(PARSE_GROUP_KEY_TEST).exe src/*.o
 endif

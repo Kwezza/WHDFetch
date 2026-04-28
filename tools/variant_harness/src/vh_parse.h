@@ -50,5 +50,9 @@ typedef struct VhParseContext {
 int vh_parse_context_load(VhParseContext *ctx, const char *defs_dir);
 void vh_parse_context_free(VhParseContext *ctx);
 int vh_parse_filename(const VhParseContext *ctx, const char *archive_name, VhParsedName *out);
+int vh_parse_group_key(const char *archive_name,
+                       char *group_key_buf,
+                       size_t group_key_buf_size,
+                       unsigned long *out_hash);
 
 #endif

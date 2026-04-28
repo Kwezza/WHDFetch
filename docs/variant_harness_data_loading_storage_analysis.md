@@ -4,6 +4,130 @@ Date: 2026-04-28
 Scope: tools/variant_harness current implementation
 Purpose: establish a concrete memory-model baseline before redesigning storage for low-memory Amiga targets.
 
+## Refactor Baseline
+
+- Date: 2026-04-28
+- Commit/branch if known: cdf7195 on branch dev
+- Tests run:
+  - tools/variant_harness: make clean ; make ; make test
+  - command checks: --resolve, --parse, --select, --report
+  - full Games report: --report ../../Bin/Amiga/temp/Dat files/Games(2026-04-17).txt --profile default
+- Current full Games candidate count: 3973
+- Current peak estimate: 19859932 bytes (~18.94 MiB)
+- Known failing or missing tests:
+  - No baseline test failures observed.
+  - Required Phase 1 sample names now exist at tests root: grouping_false_positive_cases.txt, language_cases.txt, memory_cases.txt, special_cases.txt, games_small_real.txt, games_stress_large.txt.
+
+## Phase 2 String Pool
+
+- Files added:
+  - tools/variant_harness/src/vh_string_pool.h
+  - tools/variant_harness/src/vh_string_pool.c
+  - tools/variant_harness/tests/test_vh_string_pool.c
+- Files updated:
+  - tools/variant_harness/src/vh_group.h
+  - tools/variant_harness/src/vh_group.c
+  - tools/variant_harness/Makefile
+  - tools/variant_harness/tests/expected/language_cases.report
+  - tools/variant_harness/tests/expected/singleton_profile_exclude.report
+- Offset type:
+  - unsigned long offsets returned by vh_string_pool_add()
+  - offset 0 is reserved as null/invalid
+- Growth strategy:
+  - single contiguous byte buffer
+  - initial capacity 256 bytes
+  - capacity doubles with realloc until required size fits
+  - strings are stored NUL-terminated and deduplicated by exact match
+- Tests added:
+  - single add/get round-trip
+  - multiple adds and dedup offset reuse
+  - retrieval stability across realloc growth
+  - empty-string handling
+  - invalid offset handling
+- Memory accounting updates:
+  - report now includes string_pool_bytes
+  - peak_memory_estimate_bytes now includes string pool bytes
+- Notes for Amiga/C89 compatibility:
+  - implementation uses only malloc/realloc/free and unsigned long offsets
+  - no pointer persistence from pool (offsets are stable across realloc)
+  - no C11/C++ features; plain C compatible with current harness style
+
+Measured Phase 2 result snapshot (full Games list: Bin/Amiga/temp/Dat files/Games(2026-04-17).txt):
+- candidate_count: 3973
+- candidate_struct_size_bytes: 4532
+- string_pool_bytes: 212286
+- peak_memory_estimate_bytes: 18578370 (~17.72 MiB)
+- reduction vs baseline peak (19859932): ~6.45%
+
+## Phase 3 CandidateLite Baseline
+
+- Objective status:
+  - Added compact candidate type alongside current full-candidate path.
+  - Existing selection behavior remains on full candidates for now.
+- Files updated:
+  - tools/variant_harness/src/vh_group.h
+  - tools/variant_harness/src/vh_group.c
+  - tools/variant_harness/tests/expected/language_cases.report
+  - tools/variant_harness/tests/expected/singleton_profile_exclude.report
+  - tools/variant_harness/tests/run_milestone4_tests.ps1
+- New compact type:
+  - VhCandidateLite
+  - fields: name_off, group_hash, group_off, original_index, score, flags, reject_reason
+  - measured size: 20 bytes
+- New report fields added:
+  - candidate_lite_struct_size_bytes
+  - candidate_lite_array_bytes
+  - candidate_full_array_bytes
+  - order_array_bytes
+  - estimated_selector_peak_bytes
+  - string_pool_bytes (retained from Phase 2)
+
+Measured Phase 3 result snapshot (full Games list: Bin/Amiga/temp/Dat files/Games(2026-04-17).txt):
+- candidate_count: 3973
+- candidate_lite_struct_size_bytes: 20
+- candidate_lite_array_bytes: 79460
+- order_array_bytes: 15892
+- string_pool_bytes: 212286
+- estimated_selector_peak_bytes: 307638 (~300.43 KiB)
+- peak_memory_estimate_bytes (current full path): 18578370 (~17.72 MiB)
+
+Notes:
+- Phase 3 currently introduces and measures the compact type; it does not switch candidate ingest/selection to compact records yet.
+- Historical baseline sections below remain useful for before/after comparisons and include pre-refactor figures where noted.
+
+## Phase 4 Group-Key Lightweight Parse Split
+
+- Objective status:
+  - Added lightweight group-key parser: vh_parse_group_key().
+  - Candidate ingest now derives group key/hash with lightweight parser, while full parse is retained for current scoring/report behavior.
+  - Group sort/group-run detection now compares hash first and verifies with group-key string compare.
+- Files updated:
+  - tools/variant_harness/src/vh_parse.h
+  - tools/variant_harness/src/vh_parse.c
+  - tools/variant_harness/src/vh_group.h
+  - tools/variant_harness/src/vh_group.c
+  - tools/variant_harness/tests/test_vh_parse_group_key.c
+  - tools/variant_harness/Makefile
+  - tools/variant_harness/tests/expected/singleton_profile_exclude.report
+  - tools/variant_harness/tests/expected/language_cases.report
+- Lightweight parser behavior:
+  - strips .lha/.lzx extension
+  - takes conservative title token (before first underscore)
+  - normalizes to lowercase alphanumeric group key
+  - computes deterministic 32-bit FNV-1a hash (stored as unsigned long)
+- Validation added:
+  - new unit test binary vh_parse_group_key_test
+  - verifies known key outputs
+  - verifies lightweight group keys match full parser group keys on representative filename set
+
+Observed metric impact after adding group_hash to VhCandidate:
+- candidate_struct_size_bytes: 4536 (was 4532)
+- language_cases candidate_full_array_bytes: 22680 (was 22660)
+- singleton_profile_exclude candidate_full_array_bytes: 9072 (was 9064)
+
+Notes:
+- No intentional selection-logic behavior change; grouping order in reports may differ when hash-order differs from lexical-only order, while selected winners remain unchanged.
+
 ## 1. End-to-End Runtime Flow
 
 1. main.c run_selection loads CSV parse context (vh_parse_context_load).
