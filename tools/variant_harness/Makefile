@@ -28,13 +28,13 @@ src/%.o: src/%.c
 test: $(TARGET)
 ifeq ($(OS),Windows_NT)
 	$(CC) $(CFLAGS) tests/test_vh_string_pool.c src/vh_string_pool.c -o $(STRING_POOL_TEST)
-	$(CC) $(CFLAGS) tests/test_vh_parse_group_key.c src/vh_parse.c src/vh_csv.c -o $(PARSE_GROUP_KEY_TEST)
+	$(CC) $(CFLAGS) tests/test_vh_parse_group_key.c src/vh_parse.c src/vh_csv.c src/vh_string_pool.c -o $(PARSE_GROUP_KEY_TEST)
 	powershell -NoProfile -Command "$$p='$(STRING_POOL_TEST).exe'; if (!(Test-Path -LiteralPath $$p)) { $$p='$(STRING_POOL_TEST)' }; $$p=(Resolve-Path -LiteralPath $$p).Path; & $$p; if ($$LASTEXITCODE -ne 0) { exit $$LASTEXITCODE }"
 	powershell -NoProfile -Command "$$p='$(PARSE_GROUP_KEY_TEST).exe'; if (!(Test-Path -LiteralPath $$p)) { $$p='$(PARSE_GROUP_KEY_TEST)' }; $$p=(Resolve-Path -LiteralPath $$p).Path; & $$p; if ($$LASTEXITCODE -ne 0) { exit $$LASTEXITCODE }"
 	powershell -NoProfile -ExecutionPolicy Bypass -File tests/run_milestone4_tests.ps1
 else
 	$(CC) $(CFLAGS) tests/test_vh_string_pool.c src/vh_string_pool.c -o $(STRING_POOL_TEST)
-	$(CC) $(CFLAGS) tests/test_vh_parse_group_key.c src/vh_parse.c src/vh_csv.c -o $(PARSE_GROUP_KEY_TEST)
+	$(CC) $(CFLAGS) tests/test_vh_parse_group_key.c src/vh_parse.c src/vh_csv.c src/vh_string_pool.c -o $(PARSE_GROUP_KEY_TEST)
 	./$(STRING_POOL_TEST)
 	./$(PARSE_GROUP_KEY_TEST)
 	./$(TARGET) --select tests/filenames_basic.txt --profile default > test_output/basic_select.txt

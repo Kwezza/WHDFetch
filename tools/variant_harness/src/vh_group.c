@@ -7,6 +7,8 @@
 
 #include "vh_score.h"
 
+#define VH_OLD_MODEL_CANDIDATE_STRUCT_SIZE_BYTES 4908UL
+
 static int vh_safe_copy(char *dst, size_t dst_size, const char *src)
 {
     size_t len;
@@ -188,6 +190,22 @@ static int vh_parse_candidate(const VhCandidateList *list, const VhCandidate *ca
     return vh_parse_filename(list->parse_ctx, archive_name, out);
 }
 
+static int vh_parse_candidate_score(const VhCandidateList *list, const VhCandidate *candidate, VhParsedScoreName *out)
+{
+    const char *archive_name;
+
+    if (list == NULL || candidate == NULL || out == NULL || list->parse_ctx == NULL) {
+        return 0;
+    }
+
+    archive_name = vh_candidate_archive_name(list, candidate);
+    if (archive_name[0] == '\0') {
+        return 0;
+    }
+
+    return vh_parse_filename_score(list->parse_ctx, archive_name, out);
+}
+
 static int vh_compare_index_by_group(const VhCandidateList *list, int ia, int ib)
 {
     int cmp;
@@ -267,6 +285,7 @@ int vh_group_select_best(VhCandidateList *list, const VhProfile *profile)
     for (i = 0; i < list->count; ++i) {
         list->items[i].selected = 0;
         list->items[i].rejected = 0;
+        list->items[i].reject_code = VH_REJECT_NONE;
         list->items[i].score = 0;
         list->items[i].reject_reason[0] = '\0';
         order[i] = i;
@@ -278,10 +297,42 @@ int vh_group_select_best(VhCandidateList *list, const VhProfile *profile)
     while (i < list->count) {
         int run_start = i;
         int run_end = i + 1;
+        int run_count;
 
         while (run_end < list->count &&
                vh_is_same_group(list, order[run_start], order[run_end])) {
             ++run_end;
+        }
+
+        run_count = run_end - run_start;
+
+        if (run_count == 1) {
+            VhCandidate *candidate = &list->items[order[run_start]];
+            VhScoreResult score;
+            VhParsedScoreName parsed;
+
+            if (!vh_parse_candidate_score(list, candidate, &parsed)) {
+                candidate->rejected = 1;
+                candidate->reject_code = VH_REJECT_PARSE;
+                candidate->score = 0;
+                vh_safe_copy(candidate->reject_reason, sizeof(candidate->reject_reason),
+                             "parse failed");
+            } else {
+                vh_score_candidate(&parsed, list->parse_ctx, profile, 0, &score);
+                candidate->score = score.score;
+                candidate->rejected = score.rejected;
+                candidate->reject_code = score.reject_code;
+                if (score.rejected) {
+                    vh_safe_copy(candidate->reject_reason, sizeof(candidate->reject_reason), score.reject_reason);
+                }
+            }
+
+            if (!candidate->rejected) {
+                candidate->selected = 1;
+            }
+
+            i = run_end;
+            continue;
         }
 
         {
@@ -293,19 +344,21 @@ int vh_group_select_best(VhCandidateList *list, const VhProfile *profile)
             for (k = run_start; k < run_end; ++k) {
                 VhCandidate *candidate = &list->items[order[k]];
                 VhScoreResult score;
-                VhParsedName parsed;
+                VhParsedScoreName parsed;
 
-                if (!vh_parse_candidate(list, candidate, &parsed)) {
+                if (!vh_parse_candidate_score(list, candidate, &parsed)) {
                     candidate->rejected = 1;
+                    candidate->reject_code = VH_REJECT_PARSE;
                     candidate->score = 0;
                     vh_safe_copy(candidate->reject_reason, sizeof(candidate->reject_reason),
                                  "parse failed");
                     continue;
                 }
 
-                vh_score_candidate(&parsed, profile, &score);
+                vh_score_candidate(&parsed, list->parse_ctx, profile, 1, &score);
                 candidate->score = score.score;
                 candidate->rejected = score.rejected;
+                candidate->reject_code = score.reject_code;
                 if (score.rejected) {
                     vh_safe_copy(candidate->reject_reason, sizeof(candidate->reject_reason), score.reject_reason);
                 }
@@ -349,20 +402,86 @@ void vh_group_print_selected(const VhCandidateList *list)
     }
 }
 
-static void vh_print_token_texts_or_none(const VhTokenList *list)
+static const char *vh_reject_code_text(VhRejectCode code)
 {
-    int i;
+    switch (code) {
+        case VH_REJECT_LANGUAGE: return "language";
+        case VH_REJECT_CHIPSET: return "chipset";
+        case VH_REJECT_MEMORY: return "memory";
+        case VH_REJECT_VIDEO: return "video";
+        case VH_REJECT_MEDIA: return "media";
+        case VH_REJECT_SPECIAL: return "special";
+        case VH_REJECT_PROFILE: return "profile";
+        case VH_REJECT_PARSE: return "parse";
+        default: return "none";
+    }
+}
 
-    if (list == NULL || list->count == 0) {
+static void vh_collect_group_report_tokens(const VhCandidateList *list,
+                                           const int *order,
+                                           int run_start,
+                                           int run_end,
+                                           VhStringPool *special_tokens,
+                                           VhStringPool *unknown_tokens)
+{
+    int k;
+
+    if (list == NULL || order == NULL || special_tokens == NULL || unknown_tokens == NULL) {
+        return;
+    }
+
+    for (k = run_start; k < run_end; ++k) {
+        const VhCandidate *c = &list->items[order[k]];
+        VhParsedName parsed;
+        int j;
+        unsigned long ignore_off;
+
+        if (!vh_parse_candidate(list, c, &parsed)) {
+            continue;
+        }
+
+        for (j = 0; j < parsed.special.count; ++j) {
+            vh_string_pool_add(special_tokens, parsed.special.items[j].text, &ignore_off);
+        }
+
+        for (j = 0; j < parsed.unknown.count; ++j) {
+            vh_string_pool_add(unknown_tokens, parsed.unknown.items[j].text, &ignore_off);
+        }
+    }
+}
+
+static void vh_print_pool_tokens_or_none(const VhStringPool *pool)
+{
+    unsigned long pos;
+    int printed_any;
+
+    if (pool == NULL || pool->size <= 1UL) {
         printf("none\n");
         return;
     }
 
-    for (i = 0; i < list->count; ++i) {
-        if (i > 0) {
+    printed_any = 0;
+    pos = 1UL;
+    while (pos < pool->size) {
+        const char *token = vh_string_pool_get(pool, pos);
+        size_t len;
+
+        if (token == NULL || token[0] == '\0') {
+            break;
+        }
+
+        if (printed_any) {
             printf(", ");
         }
-        printf("%s", list->items[i].text);
+        printf("%s", token);
+        printed_any = 1;
+
+        len = strlen(token);
+        pos += (unsigned long)len + 1UL;
+    }
+
+    if (!printed_any) {
+        printf("none");
     }
     printf("\n");
 }
@@ -391,6 +510,7 @@ static int vh_candidate_token_count(const VhCandidateList *list, const VhCandida
 static void vh_print_memory_estimate(const VhCandidateList *list)
 {
     int i;
+    int *order;
     size_t total_filename_chars;
     long total_tokens;
     size_t candidate_lite_array_bytes;
@@ -400,9 +520,15 @@ static void vh_print_memory_estimate(const VhCandidateList *list)
     size_t sort_order_bytes;
     size_t token_storage_estimate_bytes;
     size_t string_pool_bytes;
+    size_t csv_storage_estimate_bytes;
+    size_t temporary_parse_struct_size_bytes;
+    size_t temporary_parse_peak_estimate_bytes;
+    size_t old_model_estimate_bytes_if_available;
     size_t estimated_selector_peak_bytes;
     size_t peak_memory_estimate_bytes;
+    int largest_duplicate_group_size;
     double average_filename_length;
+    double reduction_vs_old_model_percent;
 
     if (list == NULL || list->count <= 0) {
         return;
@@ -410,6 +536,37 @@ static void vh_print_memory_estimate(const VhCandidateList *list)
 
     total_filename_chars = 0;
     total_tokens = 0;
+    largest_duplicate_group_size = 1;
+
+    order = (int *)malloc((size_t)list->count * sizeof(int));
+    if (order != NULL) {
+        for (i = 0; i < list->count; ++i) {
+            order[i] = i;
+        }
+
+        vh_sort_order_by_group(list, order, list->count);
+
+        i = 0;
+        while (i < list->count) {
+            int run_start = i;
+            int run_end = i + 1;
+            int run_size;
+
+            while (run_end < list->count &&
+                   vh_is_same_group(list, order[run_start], order[run_end])) {
+                ++run_end;
+            }
+
+            run_size = run_end - run_start;
+            if (run_size > largest_duplicate_group_size) {
+                largest_duplicate_group_size = run_size;
+            }
+
+            i = run_end;
+        }
+
+        free(order);
+    }
 
     for (i = 0; i < list->count; ++i) {
         total_filename_chars += strlen(vh_candidate_archive_name(list, &list->items[i]));
@@ -424,22 +581,53 @@ static void vh_print_memory_estimate(const VhCandidateList *list)
     order_array_bytes = sort_order_bytes;
     token_storage_estimate_bytes = (size_t)total_tokens * sizeof(VhFieldToken);
     string_pool_bytes = (size_t)vh_string_pool_bytes_used(&list->strings);
+    csv_storage_estimate_bytes = 0U;
+    if (list->parse_ctx != NULL) {
+        csv_storage_estimate_bytes += (size_t)vh_csv_bytes_used(&list->parse_ctx->language_csv);
+        csv_storage_estimate_bytes += (size_t)vh_csv_bytes_used(&list->parse_ctx->chipset_csv);
+        csv_storage_estimate_bytes += (size_t)vh_csv_bytes_used(&list->parse_ctx->video_csv);
+        csv_storage_estimate_bytes += (size_t)vh_csv_bytes_used(&list->parse_ctx->media_csv);
+        csv_storage_estimate_bytes += (size_t)vh_csv_bytes_used(&list->parse_ctx->memory_csv);
+        csv_storage_estimate_bytes += (size_t)vh_csv_bytes_used(&list->parse_ctx->special_csv);
+    }
+    temporary_parse_struct_size_bytes = sizeof(VhParsedScoreName);
+    temporary_parse_peak_estimate_bytes = (size_t)largest_duplicate_group_size * temporary_parse_struct_size_bytes;
     estimated_selector_peak_bytes = candidate_lite_array_bytes + order_array_bytes + string_pool_bytes;
-    peak_memory_estimate_bytes = candidate_array_bytes + sort_order_bytes + token_storage_estimate_bytes + string_pool_bytes;
+    peak_memory_estimate_bytes = candidate_array_bytes + sort_order_bytes + token_storage_estimate_bytes + string_pool_bytes + csv_storage_estimate_bytes;
+    old_model_estimate_bytes_if_available =
+        ((size_t)list->count * (size_t)VH_OLD_MODEL_CANDIDATE_STRUCT_SIZE_BYTES) +
+        sort_order_bytes + token_storage_estimate_bytes + csv_storage_estimate_bytes;
+
+    reduction_vs_old_model_percent = 0.0;
+    if (old_model_estimate_bytes_if_available > 0U &&
+        old_model_estimate_bytes_if_available >= peak_memory_estimate_bytes) {
+        reduction_vs_old_model_percent =
+            ((double)(old_model_estimate_bytes_if_available - peak_memory_estimate_bytes) * 100.0) /
+            (double)old_model_estimate_bytes_if_available;
+    }
 
     printf("Memory estimate:\n");
     printf("  candidate_count: %d\n", list->count);
     printf("  average_filename_length: %.2f\n", average_filename_length);
     printf("  candidate_struct_size_bytes: %u\n", (unsigned)sizeof(VhCandidate));
     printf("  candidate_lite_struct_size_bytes: %u\n", (unsigned)sizeof(VhCandidateLite));
+    printf("  id_list_struct_size_bytes: %u\n", (unsigned)sizeof(VhTokenIdList));
+    printf("  parsed_name_old_struct_size_bytes: %u\n", (unsigned)sizeof(VhParsedName));
+    printf("  parsed_score_struct_size_bytes: %u\n", (unsigned)sizeof(VhParsedScoreName));
     printf("  candidate_lite_array_bytes: %u\n", (unsigned)candidate_lite_array_bytes);
     printf("  candidate_full_array_bytes: %u\n", (unsigned)candidate_full_array_bytes);
     printf("  order_array_bytes: %u\n", (unsigned)order_array_bytes);
     printf("  parsed_token_count: %ld\n", total_tokens);
     printf("  parsed_token_storage_estimate_bytes: %u\n", (unsigned)token_storage_estimate_bytes);
     printf("  string_pool_bytes: %u\n", (unsigned)string_pool_bytes);
+    printf("  csv_storage_estimate_bytes: %u\n", (unsigned)csv_storage_estimate_bytes);
+    printf("  temporary_parse_struct_size_bytes: %u\n", (unsigned)temporary_parse_struct_size_bytes);
+    printf("  largest_duplicate_group_size: %d\n", largest_duplicate_group_size);
+    printf("  temporary_parse_peak_estimate_bytes: %u\n", (unsigned)temporary_parse_peak_estimate_bytes);
     printf("  estimated_selector_peak_bytes: %u\n", (unsigned)estimated_selector_peak_bytes);
-    printf("  peak_memory_estimate_bytes: %u\n\n", (unsigned)peak_memory_estimate_bytes);
+    printf("  peak_memory_estimate_bytes: %u\n", (unsigned)peak_memory_estimate_bytes);
+    printf("  old_model_estimate_bytes_if_available: %u\n", (unsigned)old_model_estimate_bytes_if_available);
+    printf("  reduction_vs_old_model_percent: %.2f\n\n", reduction_vs_old_model_percent);
 }
 
 void vh_group_print_report(const VhCandidateList *list)
@@ -476,8 +664,11 @@ void vh_group_print_report(const VhCandidateList *list)
         {
             int k;
             const VhCandidate *selected_candidate = NULL;
-            VhParsedName selected_parsed;
-            int has_selected_parsed = 0;
+            VhStringPool special_tokens;
+            VhStringPool unknown_tokens;
+            int have_group_tokens;
+
+            have_group_tokens = vh_string_pool_init(&special_tokens) && vh_string_pool_init(&unknown_tokens);
 
             for (k = run_start; k < run_end; ++k) {
                 const VhCandidate *c = &list->items[order[k]];
@@ -508,10 +699,11 @@ void vh_group_print_report(const VhCandidateList *list)
                     if (!c->selected) {
                         printf("  %s  score=%ld", vh_candidate_archive_name(list, c), c->score);
                         if (c->rejected) {
+                            const char *code_text = vh_reject_code_text(c->reject_code);
                             if (c->reject_reason[0] != '\0') {
-                                printf("  rejected (%s)", c->reject_reason);
+                                printf("  rejected (%s: %s)", code_text, c->reject_reason);
                             } else {
-                                printf("  rejected");
+                                printf("  rejected (%s)", code_text);
                             }
                         }
                         printf("\n");
@@ -519,21 +711,25 @@ void vh_group_print_report(const VhCandidateList *list)
                 }
 
                 printf("Recognised special tags:\n  ");
-                if (selected_candidate != NULL &&
-                    vh_parse_candidate(list, selected_candidate, &selected_parsed)) {
-                    has_selected_parsed = 1;
-                    vh_print_token_texts_or_none(&selected_parsed.special);
+                if (have_group_tokens) {
+                    vh_collect_group_report_tokens(list, order, run_start, run_end, &special_tokens, &unknown_tokens);
+                    vh_print_pool_tokens_or_none(&special_tokens);
                 } else {
                     printf("none\n");
                 }
 
                 printf("Unknown tokens:\n  ");
-                if (has_selected_parsed) {
-                    vh_print_token_texts_or_none(&selected_parsed.unknown);
+                if (have_group_tokens) {
+                    vh_print_pool_tokens_or_none(&unknown_tokens);
                 } else {
                     printf("none\n");
                 }
                 printf("\n");
+            }
+
+            if (have_group_tokens) {
+                vh_string_pool_free(&special_tokens);
+                vh_string_pool_free(&unknown_tokens);
             }
         }
 

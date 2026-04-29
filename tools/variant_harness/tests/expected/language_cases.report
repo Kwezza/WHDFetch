@@ -22,14 +22,23 @@ Unknown tokens:
 Memory estimate:
   candidate_count: 5
   average_filename_length: 18.20
-  candidate_struct_size_bytes: 156
+  candidate_struct_size_bytes: 160
   candidate_lite_struct_size_bytes: 20
+  id_list_struct_size_bytes: 18
+  parsed_name_old_struct_size_bytes: 4380
+  parsed_score_struct_size_bytes: 110
   candidate_lite_array_bytes: 100
-  candidate_full_array_bytes: 780
+  candidate_full_array_bytes: 800
   order_array_bytes: 20
   parsed_token_count: 8
   parsed_token_storage_estimate_bytes: 544
   string_pool_bytes: 109
+  csv_storage_estimate_bytes: 4733
+  temporary_parse_struct_size_bytes: 110
+  largest_duplicate_group_size: 3
+  temporary_parse_peak_estimate_bytes: 330
   estimated_selector_peak_bytes: 229
-  peak_memory_estimate_bytes: 1453
+  peak_memory_estimate_bytes: 6206
+  old_model_estimate_bytes_if_available: 29837
+  reduction_vs_old_model_percent: 79.20
 

@@ -73,6 +73,23 @@ static void vh_token_list_add(VhTokenList *list, int id, const char *text)
     vh_safe_copy(slot->text, sizeof(slot->text), text);
 }
 
+static void vh_token_id_list_add(VhTokenIdList *list, int id)
+{
+    if (list == NULL) {
+        return;
+    }
+
+    if (id < 0 || id > 65535) {
+        return;
+    }
+
+    if (list->count >= VH_MAX_SCORE_IDS_PER_FIELD) {
+        return;
+    }
+
+    list->ids[list->count++] = (unsigned short)id;
+}
+
 static void vh_split_underscore_tokens(char *text, char **tokens, int *token_count)
 {
     char *cursor;
@@ -231,6 +248,45 @@ static int vh_try_language_compact_token(const VhCsvFile *language_csv, const ch
     return 1;
 }
 
+static int vh_try_language_compact_token_ids(const VhCsvFile *language_csv, const char *token, VhTokenIdList *language)
+{
+    size_t len;
+    size_t i;
+
+    len = strlen(token);
+    if (len < 4 || (len % 2) != 0) {
+        return 0;
+    }
+
+    for (i = 0; i < len; i += 2) {
+        char chunk[3];
+        VhCsvResult result;
+
+        chunk[0] = token[i];
+        chunk[1] = token[i + 1];
+        chunk[2] = '\0';
+
+        if (!vh_csv_lookup_token(language_csv, chunk, &result)) {
+            return 0;
+        }
+    }
+
+    for (i = 0; i < len; i += 2) {
+        char chunk[3];
+        VhCsvResult result;
+
+        chunk[0] = token[i];
+        chunk[1] = token[i + 1];
+        chunk[2] = '\0';
+
+        if (vh_csv_lookup_token(language_csv, chunk, &result)) {
+            vh_token_id_list_add(language, result.id);
+        }
+    }
+
+    return 1;
+}
+
 static int vh_try_match_field(const VhCsvFile *csv, const char *token, VhTokenList *list)
 {
     VhCsvResult result;
@@ -240,6 +296,18 @@ static int vh_try_match_field(const VhCsvFile *csv, const char *token, VhTokenLi
     }
 
     vh_token_list_add(list, result.id, result.canonical != NULL ? result.canonical : token);
+    return 1;
+}
+
+static int vh_try_match_field_id(const VhCsvFile *csv, const char *token, VhTokenIdList *list)
+{
+    VhCsvResult result;
+
+    if (!vh_csv_lookup_token(csv, token, &result)) {
+        return 0;
+    }
+
+    vh_token_id_list_add(list, result.id);
     return 1;
 }
 
@@ -370,6 +438,76 @@ int vh_parse_filename(const VhParseContext *ctx, const char *archive_name, VhPar
         }
 
         vh_token_list_add(&out->unknown, 0, token);
+    }
+
+    return 1;
+}
+
+int vh_parse_filename_score(const VhParseContext *ctx, const char *archive_name, VhParsedScoreName *out)
+{
+    char work[VH_WORK_MAX];
+    char *tokens[VH_MAX_SPLIT_TOKENS];
+    int token_count;
+    int i;
+    size_t work_len;
+
+    if (ctx == NULL || out == NULL || archive_name == NULL || !ctx->is_loaded) {
+        return 0;
+    }
+
+    memset(out, 0, sizeof(*out));
+
+    vh_safe_copy(work, sizeof(work), archive_name);
+    work_len = strlen(work);
+
+    if (work_len >= 4) {
+        char *ext = work + (work_len - 4);
+        if (vh_stricmp(ext, ".lha") == 0 || vh_stricmp(ext, ".lzx") == 0) {
+            *ext = '\0';
+        }
+    }
+
+    vh_split_underscore_tokens(work, tokens, &token_count);
+    if (token_count <= 0) {
+        return 0;
+    }
+
+    for (i = 1; i < token_count; ++i) {
+        const char *token = tokens[i];
+
+        if (vh_is_version_token(token)) {
+            continue;
+        }
+
+        if (vh_try_match_field_id(&ctx->language_csv, token, &out->language)) {
+            continue;
+        }
+
+        if (vh_try_language_compact_token_ids(&ctx->language_csv, token, &out->language)) {
+            continue;
+        }
+
+        if (vh_try_match_field_id(&ctx->chipset_csv, token, &out->chipset)) {
+            continue;
+        }
+
+        if (vh_try_match_field_id(&ctx->video_csv, token, &out->video)) {
+            continue;
+        }
+
+        if (vh_try_match_field_id(&ctx->media_csv, token, &out->media)) {
+            continue;
+        }
+
+        if (vh_try_match_field_id(&ctx->memory_csv, token, &out->memory)) {
+            continue;
+        }
+
+        if (vh_try_match_field_id(&ctx->special_csv, token, &out->special)) {
+            continue;
+        }
+
+        out->has_unknown = 1;
     }
 
     return 1;

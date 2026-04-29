@@ -3,6 +3,7 @@
 
 #include "vh_parse.h"
 #include "vh_profile.h"
+#include "vh_score.h"
 #include "vh_string_pool.h"
 
 #define VH_MAX_REJECT_REASON 128
@@ -41,6 +42,7 @@ typedef struct VhCandidate {
     int original_index;
     int selected;
     int rejected;
+    VhRejectCode reject_code;
     long score;
     char reject_reason[VH_MAX_REJECT_REASON];
 } VhCandidate;

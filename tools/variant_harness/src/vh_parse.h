@@ -10,6 +10,7 @@
 #define VH_MAX_TITLE_TEXT 128
 #define VH_MAX_ARCHIVE_NAME 256
 #define VH_MAX_VERSION_TEXT 32
+#define VH_MAX_SCORE_IDS_PER_FIELD 8
 
 typedef struct VhFieldToken {
     int id;
@@ -37,6 +38,21 @@ typedef struct VhParsedName {
     VhTokenList unknown;
 } VhParsedName;
 
+typedef struct VhTokenIdList {
+    unsigned short ids[VH_MAX_SCORE_IDS_PER_FIELD];
+    unsigned char count;
+} VhTokenIdList;
+
+typedef struct VhParsedScoreName {
+    VhTokenIdList chipset;
+    VhTokenIdList language;
+    VhTokenIdList memory;
+    VhTokenIdList video;
+    VhTokenIdList media;
+    VhTokenIdList special;
+    unsigned char has_unknown;
+} VhParsedScoreName;
+
 typedef struct VhParseContext {
     VhCsvFile language_csv;
     VhCsvFile chipset_csv;
@@ -50,6 +66,7 @@ typedef struct VhParseContext {
 int vh_parse_context_load(VhParseContext *ctx, const char *defs_dir);
 void vh_parse_context_free(VhParseContext *ctx);
 int vh_parse_filename(const VhParseContext *ctx, const char *archive_name, VhParsedName *out);
+int vh_parse_filename_score(const VhParseContext *ctx, const char *archive_name, VhParsedScoreName *out);
 int vh_parse_group_key(const char *archive_name,
                        char *group_key_buf,
                        size_t group_key_buf_size,

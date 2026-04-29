@@ -27,23 +27,28 @@ static int vh_stricmp(const char *a, const char *b)
     return vh_char_icmp(*a, *b);
 }
 
-static char *vh_strdup_local(const char *src)
+static const char *vh_csv_entry_token(const VhCsvFile *csv, const VhCsvEntry *entry)
 {
-    size_t len;
-    char *dst;
+    const char *token;
 
-    if (src == NULL) {
+    if (csv == NULL || entry == NULL) {
         return NULL;
     }
 
-    len = strlen(src);
-    dst = (char *)malloc(len + 1);
-    if (dst == NULL) {
+    token = vh_string_pool_get(&csv->strings, entry->token_off);
+    return (token != NULL) ? token : "";
+}
+
+static const char *vh_csv_entry_description(const VhCsvFile *csv, const VhCsvEntry *entry)
+{
+    const char *description;
+
+    if (csv == NULL || entry == NULL) {
         return NULL;
     }
 
-    memcpy(dst, src, len + 1);
-    return dst;
+    description = vh_string_pool_get(&csv->strings, entry->description_off);
+    return (description != NULL) ? description : "";
 }
 
 static void vh_trim_in_place(char *text)
@@ -141,7 +146,7 @@ static const char *vh_csv_get_canonical_for_id(const VhCsvFile *csv, int id)
 
     for (i = 0; i < csv->count; ++i) {
         if (csv->entries[i].id == id) {
-            return csv->entries[i].token;
+            return vh_csv_entry_token(csv, &csv->entries[i]);
         }
     }
 
@@ -161,8 +166,13 @@ int vh_csv_load(VhCsvFile *csv, const char *path)
     csv->count = 0;
     csv->capacity = 0;
 
+    if (!vh_string_pool_init(&csv->strings)) {
+        return 0;
+    }
+
     fp = fopen(path, "r");
     if (fp == NULL) {
+        vh_string_pool_free(&csv->strings);
         return 0;
     }
 
@@ -190,21 +200,16 @@ int vh_csv_load(VhCsvFile *csv, const char *path)
         }
 
         entry.id = (int)id_value;
-        entry.token = vh_strdup_local(cols[1]);
-        entry.description = vh_strdup_local((col_count >= 3) ? cols[2] : "");
-        entry.is_default = (col_count >= 4 && vh_stricmp(cols[3], "default") == 0) ? 1 : 0;
+        entry.flags = (unsigned char)((col_count >= 4 && vh_stricmp(cols[3], "default") == 0) ? VH_CSV_ENTRY_DEFAULT : 0);
 
-        if (entry.token == NULL || entry.description == NULL) {
-            free(entry.token);
-            free(entry.description);
+        if (!vh_string_pool_add(&csv->strings, cols[1], &entry.token_off) ||
+            !vh_string_pool_add(&csv->strings, (col_count >= 3) ? cols[2] : "", &entry.description_off)) {
             vh_csv_free(csv);
             fclose(fp);
             return 0;
         }
 
         if (!vh_csv_append_entry(csv, &entry)) {
-            free(entry.token);
-            free(entry.description);
             vh_csv_free(csv);
             fclose(fp);
             return 0;
@@ -217,18 +222,12 @@ int vh_csv_load(VhCsvFile *csv, const char *path)
 
 void vh_csv_free(VhCsvFile *csv)
 {
-    int i;
-
     if (csv == NULL) {
         return;
     }
 
-    for (i = 0; i < csv->count; ++i) {
-        free(csv->entries[i].token);
-        free(csv->entries[i].description);
-    }
-
     free(csv->entries);
+    vh_string_pool_free(&csv->strings);
     csv->entries = NULL;
     csv->count = 0;
     csv->capacity = 0;
@@ -243,20 +242,42 @@ int vh_csv_lookup_token(const VhCsvFile *csv, const char *token, VhCsvResult *ou
     }
 
     for (i = 0; i < csv->count; ++i) {
-        if (strcmp(token, csv->entries[i].token) == 0) {
+        const char *entry_token = vh_csv_entry_token(csv, &csv->entries[i]);
+        if (strcmp(token, entry_token) == 0) {
             out->id = csv->entries[i].id;
             out->canonical = vh_csv_get_canonical_for_id(csv, out->id);
-            out->description = csv->entries[i].description;
+            out->description = vh_csv_entry_description(csv, &csv->entries[i]);
             return 1;
         }
     }
 
     for (i = 0; i < csv->count; ++i) {
-        if (vh_stricmp(token, csv->entries[i].token) == 0) {
+        const char *entry_token = vh_csv_entry_token(csv, &csv->entries[i]);
+        if (vh_stricmp(token, entry_token) == 0) {
             out->id = csv->entries[i].id;
             out->canonical = vh_csv_get_canonical_for_id(csv, out->id);
-            out->description = csv->entries[i].description;
+            out->description = vh_csv_entry_description(csv, &csv->entries[i]);
             return 1;
+        }
+    }
+
+    return 0;
+}
+
+int vh_csv_lookup_id(const VhCsvFile *csv, int id, VhCsvResult *out)
+{
+    int i;
+
+    if (csv == NULL || out == NULL) {
+        return 0;
+    }
+
+    for (i = 0; i < csv->count; ++i) {
+        if (csv->entries[i].id == id) {
+            out->id = id;
+            out->canonical = vh_csv_get_canonical_for_id(csv, id);
+            out->description = vh_csv_entry_description(csv, &csv->entries[i]);
+            return (out->canonical != NULL);
         }
     }
 
@@ -272,16 +293,30 @@ int vh_csv_get_default(const VhCsvFile *csv, VhCsvResult *out)
     }
 
     for (i = 0; i < csv->count; ++i) {
-        if (csv->entries[i].is_default) {
+        if ((csv->entries[i].flags & VH_CSV_ENTRY_DEFAULT) != 0) {
             out->id = csv->entries[i].id;
             out->canonical = vh_csv_get_canonical_for_id(csv, out->id);
-            out->description = csv->entries[i].description;
+            out->description = vh_csv_entry_description(csv, &csv->entries[i]);
             return 1;
         }
     }
 
     out->id = csv->entries[0].id;
     out->canonical = vh_csv_get_canonical_for_id(csv, out->id);
-    out->description = csv->entries[0].description;
+    out->description = vh_csv_entry_description(csv, &csv->entries[0]);
     return 1;
+}
+
+unsigned long vh_csv_bytes_used(const VhCsvFile *csv)
+{
+    unsigned long entry_bytes;
+    unsigned long string_bytes;
+
+    if (csv == NULL) {
+        return 0UL;
+    }
+
+    entry_bytes = (unsigned long)csv->count * (unsigned long)sizeof(VhCsvEntry);
+    string_bytes = vh_string_pool_bytes_used(&csv->strings);
+    return entry_bytes + string_bytes;
 }
