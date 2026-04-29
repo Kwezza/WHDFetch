@@ -1,7 +1,7 @@
 #include "vh_string_pool.h"
+#include "vh_memtrack.h"
 
 #include <stddef.h>
-#include <stdlib.h>
 #include <string.h>
 
 #define VH_STRING_POOL_INITIAL_CAPACITY 256UL
@@ -28,7 +28,9 @@ static int vh_string_pool_grow(VhStringPool *pool, unsigned long needed_size)
         new_capacity *= 2UL;
     }
 
-    new_data = (char *)realloc(pool->data, (size_t)new_capacity);
+    new_data = (char *)vh_realloc_tag(pool->data,
+                                      (size_t)new_capacity,
+                                      (pool->tag != NULL) ? pool->tag : "unknown");
     if (new_data == NULL) {
         return 0;
     }
@@ -62,7 +64,7 @@ static int vh_string_pool_find_existing(const VhStringPool *pool, const char *s,
     return 0;
 }
 
-int vh_string_pool_init(VhStringPool *pool)
+int vh_string_pool_init_tag(VhStringPool *pool, const char *tag)
 {
     if (pool == NULL) {
         return 0;
@@ -71,6 +73,7 @@ int vh_string_pool_init(VhStringPool *pool)
     pool->data = NULL;
     pool->size = 0;
     pool->capacity = 0;
+    pool->tag = (tag != NULL && tag[0] != '\0') ? tag : "unknown";
 
     if (!vh_string_pool_grow(pool, 2UL)) {
         return 0;
@@ -82,16 +85,22 @@ int vh_string_pool_init(VhStringPool *pool)
     return 1;
 }
 
+int vh_string_pool_init(VhStringPool *pool)
+{
+    return vh_string_pool_init_tag(pool, "unknown");
+}
+
 void vh_string_pool_free(VhStringPool *pool)
 {
     if (pool == NULL) {
         return;
     }
 
-    free(pool->data);
+    vh_free(pool->data);
     pool->data = NULL;
     pool->size = 0;
     pool->capacity = 0;
+    pool->tag = NULL;
 }
 
 int vh_string_pool_add(VhStringPool *pool, const char *s, unsigned long *out_off)

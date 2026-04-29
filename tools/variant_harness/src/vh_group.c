@@ -1,8 +1,8 @@
 #include "vh_group.h"
+#include "vh_memtrack.h"
 
 #include <ctype.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include "vh_score.h"
@@ -85,7 +85,9 @@ static int vh_candidate_list_append(VhCandidateList *list, const VhCandidate *ca
 
     if (list->count == list->capacity) {
         new_capacity = (list->capacity == 0) ? 64 : list->capacity * 2;
-        new_items = (VhCandidate *)realloc(list->items, (size_t)new_capacity * sizeof(VhCandidate));
+        new_items = (VhCandidate *)vh_realloc_tag(list->items,
+                              (size_t)new_capacity * sizeof(VhCandidate),
+                              "candidate_array");
         if (new_items == NULL) {
             return 0;
         }
@@ -111,7 +113,7 @@ int vh_group_load_candidates(VhCandidateList *list, const char *listfile, const 
 
     memset(list, 0, sizeof(*list));
 
-    if (!vh_string_pool_init(&list->strings)) {
+    if (!vh_string_pool_init_tag(&list->strings, "candidate_string_pool")) {
         return 0;
     }
 
@@ -166,7 +168,7 @@ void vh_group_free_candidates(VhCandidateList *list)
         return;
     }
 
-    free(list->items);
+    vh_free(list->items);
     vh_string_pool_free(&list->strings);
     list->items = NULL;
     list->count = 0;
@@ -277,7 +279,7 @@ int vh_group_select_best(VhCandidateList *list, const VhProfile *profile)
         return 0;
     }
 
-    order = (int *)malloc((size_t)list->count * sizeof(int));
+    order = (int *)vh_malloc_tag((size_t)list->count * sizeof(int), "order_array");
     if (order == NULL) {
         return 0;
     }
@@ -383,7 +385,7 @@ int vh_group_select_best(VhCandidateList *list, const VhProfile *profile)
         i = run_end;
     }
 
-    free(order);
+    vh_free(order);
     return 1;
 }
 
@@ -538,7 +540,7 @@ static void vh_print_memory_estimate(const VhCandidateList *list)
     total_tokens = 0;
     largest_duplicate_group_size = 1;
 
-    order = (int *)malloc((size_t)list->count * sizeof(int));
+    order = (int *)vh_malloc_tag((size_t)list->count * sizeof(int), "report_order_array");
     if (order != NULL) {
         for (i = 0; i < list->count; ++i) {
             order[i] = i;
@@ -565,7 +567,7 @@ static void vh_print_memory_estimate(const VhCandidateList *list)
             i = run_end;
         }
 
-        free(order);
+        vh_free(order);
     }
 
     for (i = 0; i < list->count; ++i) {
@@ -639,7 +641,7 @@ void vh_group_print_report(const VhCandidateList *list)
         return;
     }
 
-    order = (int *)malloc((size_t)list->count * sizeof(int));
+    order = (int *)vh_malloc_tag((size_t)list->count * sizeof(int), "report_order_array");
     if (order == NULL) {
         return;
     }
@@ -668,7 +670,8 @@ void vh_group_print_report(const VhCandidateList *list)
             VhStringPool unknown_tokens;
             int have_group_tokens;
 
-            have_group_tokens = vh_string_pool_init(&special_tokens) && vh_string_pool_init(&unknown_tokens);
+            have_group_tokens = vh_string_pool_init_tag(&special_tokens, "report_temp_pool") &&
+                                vh_string_pool_init_tag(&unknown_tokens, "report_temp_pool");
 
             for (k = run_start; k < run_end; ++k) {
                 const VhCandidate *c = &list->items[order[k]];
@@ -736,7 +739,83 @@ void vh_group_print_report(const VhCandidateList *list)
         i = run_end;
     }
 
-    free(order);
+    vh_free(order);
 
     vh_print_memory_estimate(list);
+}
+
+void vh_group_calculate_stats(const VhCandidateList *list,
+                              int *out_group_count,
+                              int *out_duplicate_group_count,
+                              int *out_largest_duplicate_group_size,
+                              int *out_selected_count)
+{
+    int i;
+    int group_count;
+    int duplicate_group_count;
+    int largest_duplicate_group_size;
+    int selected_count;
+    int *order;
+
+    group_count = 0;
+    duplicate_group_count = 0;
+    largest_duplicate_group_size = 0;
+    selected_count = 0;
+
+    if (list != NULL && list->count > 0) {
+        for (i = 0; i < list->count; ++i) {
+            if (list->items[i].selected) {
+                ++selected_count;
+            }
+        }
+
+        order = (int *)vh_malloc_tag((size_t)list->count * sizeof(int), "report_order_array");
+        if (order != NULL) {
+            for (i = 0; i < list->count; ++i) {
+                order[i] = i;
+            }
+
+            vh_sort_order_by_group(list, order, list->count);
+
+            i = 0;
+            while (i < list->count) {
+                int run_start;
+                int run_end;
+                int run_size;
+
+                run_start = i;
+                run_end = i + 1;
+                while (run_end < list->count &&
+                       vh_is_same_group(list, order[run_start], order[run_end])) {
+                    ++run_end;
+                }
+
+                run_size = run_end - run_start;
+                ++group_count;
+                if (run_size > 1) {
+                    ++duplicate_group_count;
+                }
+                if (run_size > largest_duplicate_group_size) {
+                    largest_duplicate_group_size = run_size;
+                }
+
+                i = run_end;
+            }
+
+            vh_free(order);
+        }
+    }
+
+    if (out_group_count != NULL) {
+        *out_group_count = group_count;
+    }
+    if (out_duplicate_group_count != NULL) {
+        *out_duplicate_group_count = duplicate_group_count;
+    }
+    if (out_largest_duplicate_group_size != NULL) {
+        *out_largest_duplicate_group_size = largest_duplicate_group_size;
+    }
+    if (out_selected_count != NULL) {
+        *out_selected_count = selected_count;
+    }
 }

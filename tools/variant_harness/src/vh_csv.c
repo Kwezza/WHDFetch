@@ -1,4 +1,5 @@
 #include "vh_csv.h"
+#include "vh_memtrack.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -128,7 +129,9 @@ static int vh_csv_append_entry(VhCsvFile *csv, const VhCsvEntry *entry)
 
     if (csv->count == csv->capacity) {
         new_capacity = (csv->capacity == 0) ? 32 : csv->capacity * 2;
-        new_entries = (VhCsvEntry *)realloc(csv->entries, (size_t)new_capacity * sizeof(VhCsvEntry));
+        new_entries = (VhCsvEntry *)vh_realloc_tag(csv->entries,
+                               (size_t)new_capacity * sizeof(VhCsvEntry),
+                               "csv_entry_array");
         if (new_entries == NULL) {
             return 0;
         }
@@ -166,7 +169,7 @@ int vh_csv_load(VhCsvFile *csv, const char *path)
     csv->count = 0;
     csv->capacity = 0;
 
-    if (!vh_string_pool_init(&csv->strings)) {
+    if (!vh_string_pool_init_tag(&csv->strings, "csv_string_pool")) {
         return 0;
     }
 
@@ -226,7 +229,7 @@ void vh_csv_free(VhCsvFile *csv)
         return;
     }
 
-    free(csv->entries);
+    vh_free(csv->entries);
     vh_string_pool_free(&csv->strings);
     csv->entries = NULL;
     csv->count = 0;

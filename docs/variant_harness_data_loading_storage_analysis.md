@@ -498,6 +498,315 @@ Validation:
   - Phase 3 memory estimate output present
   - Phase 3 stress candidate-count assertion passed
 
+## Phase 13 Real Full-DAT Allocation Measurement
+
+- Date: 2026-04-29
+- Commit/branch: e2ff256 on branch dev
+- Full Games DAT path used:
+  - Bin/Amiga/temp/Dat files/Games(2026-04-17).txt
+
+Build and test status (tools/variant_harness):
+- make clean
+- make
+- make test
+- Status: pass
+
+Commands run for measurement (tools/variant_harness cwd):
+- .\variant_harness --select "..\..\Bin\Amiga\temp\Dat files\Games(2026-04-17).txt" --profile default --memtrace
+- .\variant_harness --report "..\..\Bin\Amiga\temp\Dat files\Games(2026-04-17).txt" --profile default --memtrace
+
+Measured --select memory trace (real tracked allocations):
+- candidate_count: 3973
+- selected_count: 2893
+- group_count: 2897
+- duplicate_group_count: 670
+- largest_duplicate_group_size: 12
+- actual_peak_heap_bytes: 942612
+- actual_current_heap_bytes: 926720
+- actual_current_heap_bytes_after_cleanup: 0
+- allocation_count: 16
+- free_count: 16
+- realloc_count: 36
+- largest_single_allocation_bytes: 655360
+- failed_allocation_count: 0
+- all_tracked_allocations_freed: yes
+
+Measured --report memory trace (real tracked allocations):
+- candidate_count: 3973
+- selected_count: 2893
+- group_count: 2897
+- duplicate_group_count: 670
+- largest_duplicate_group_size: 12
+- actual_peak_heap_bytes: 943380
+- actual_current_heap_bytes: 926720
+- actual_current_heap_bytes_after_cleanup: 0
+- allocation_count: 5812
+- free_count: 5812
+- realloc_count: 5831
+- largest_single_allocation_bytes: 655360
+- failed_allocation_count: 0
+- all_tracked_allocations_freed: yes
+
+Measured vs previous estimate comparison:
+- selector-path estimate (existing):
+  - estimated_selector_peak_bytes: 307638
+- selector-path measured peak (real tracked):
+  - actual_peak_heap_bytes (--select): 942612
+- delta: +634974 bytes (measured peak is ~3.06x the compact selector estimate)
+- conservative/report-path estimate (existing):
+  - peak_memory_estimate_bytes: 1213147
+- report-path measured peak (real tracked):
+  - actual_peak_heap_bytes (--report): 943380
+- delta: -269767 bytes (measured peak is lower than conservative estimate)
+
+Interpretation:
+- Compact selector path classification:
+  - under 1 MB, above 512 KB (942612 bytes)
+- Report path classification:
+  - under 1 MB in this PC harness measurement (943380 bytes)
+- Release suitability decision:
+  - keep report path as deferred/non-shipping diagnostics for now; it remains output-heavy and high-churn (5812 allocations, 5831 reallocs) and is not required for normal selection flow
+- Leak evidence:
+  - none observed in tracked harness allocations (actual_current_heap_bytes_after_cleanup = 0, free_count matches allocation_count)
+
+Coverage and caveats:
+- Tracked allocation coverage in harness code:
+  - candidate arrays
+  - order arrays (selection/report/stats)
+  - string pools (candidate names/group keys, CSV pools, report temporary token pools)
+  - CSV entry arrays
+- Profile heap allocations:
+  - none currently used (profile runtime storage is fixed-size struct storage)
+- Allocations not covered by this tracker:
+  - C runtime and standard library internal allocations (stdio FILE buffering, CRT bookkeeping, process/runtime startup memory)
+  - stack memory usage (not heap-tracked)
+- Platform caveat:
+  - measurements were captured on PC malloc/realloc behavior in the harness; Amiga AllocVec allocator behavior and fragmentation characteristics can differ
+
+Terminology clarity:
+- estimated_selector_peak_bytes:
+  - compact selector-path analytical estimate (candidate_lite + order + string pool model)
+- peak_memory_estimate_bytes:
+  - conservative/report/debug-style analytical estimate, intentionally broader than normal compact selector resident terms
+
+## Phase 14 Largest Allocation Investigation
+
+- Date: 2026-04-29
+- Commit/branch: e2ff256 on branch dev
+- Scope: investigation-only diagnostics in tools/variant_harness (no main WHDFetch integration changes)
+
+Build and test status (tools/variant_harness):
+- make clean
+- make
+- make test
+- Status: pass
+
+Commands run (tools/variant_harness cwd):
+- .\variant_harness --select "..\..\Bin\Amiga\temp\Dat files\Games(2026-04-17).txt" --profile default --memtrace
+- .\variant_harness --report "..\..\Bin\Amiga\temp\Dat files\Games(2026-04-17).txt" --profile default --memtrace
+
+Memtrace implementation findings:
+- largest_single_allocation_bytes is updated by both:
+  - vh_malloc_tag()/vh_malloc() payload size
+  - vh_realloc_tag()/vh_realloc() new target payload size
+- Tracker header metadata is not included in largest_single_allocation_bytes.
+  - vh_memtrack stores header fields (magic/size/tag index) before payload.
+  - reported largest size is payload-only (`largest_single_allocation_is_payload_only: yes`).
+
+Memtrace summary for full Games --select:
+- candidate_count: 3973
+- selected_count: 2893
+- actual_peak_heap_bytes: 942612
+- largest_single_allocation_bytes: 655360
+- largest_single_allocation_tag: candidate_array
+- largest_single_allocation_operation: realloc
+- all_tracked_allocations_freed: yes
+- notable per-tag peaks:
+  - candidate_array: peak_bytes=655360
+  - candidate_string_pool: peak_bytes=262144
+  - order_array: peak_bytes=15892
+  - report_order_array: peak_bytes=15892
+
+Memtrace summary for full Games --report:
+- candidate_count: 3973
+- selected_count: 2893
+- actual_peak_heap_bytes: 943380
+- largest_single_allocation_bytes: 655360
+- largest_single_allocation_tag: candidate_array
+- largest_single_allocation_operation: realloc
+- all_tracked_allocations_freed: yes
+- notable per-tag peaks:
+  - candidate_array: peak_bytes=655360
+  - candidate_string_pool: peak_bytes=262144
+  - report_order_array: peak_bytes=15892
+  - report_temp_pool: peak_bytes=768
+
+Root cause of 655360-byte allocation:
+- Owner/source:
+  - candidate_array (VhCandidateList.items) in vh_group candidate ingest growth path.
+- Why it reaches this size:
+  - candidate array grows by doubling capacity via realloc.
+  - At full Games size, growth reaches capacity 4096 elements.
+  - sizeof(VhCandidate) is 160 bytes.
+  - 4096 * 160 = 655360 bytes.
+- Allocation type/lifetime:
+  - This is a realloc growth step to the final resident candidate-array capacity for the run.
+  - It remains allocated through selection/report processing, then is freed at cleanup.
+
+Useful bytes vs capacity at full Games size:
+- Useful bytes stored (actual candidates):
+  - 3973 * 160 = 635680 bytes.
+- Allocated capacity bytes:
+  - 4096 * 160 = 655360 bytes.
+- Capacity slack due to doubling policy:
+  - 655360 - 635680 = 19680 bytes (123 spare slots, about 3.0% slack).
+
+Interpretation:
+- The largest allocation is expected and structural, not an accidental leak or runaway temp buffer.
+- It is mainly the normal final doubling capacity step for the candidate array.
+- The slack is modest at this dataset size (about 3%), so most of the block is useful payload.
+
+Count-first/exact-allocation impact (analysis only):
+- A count-first exact allocation strategy would likely remove this slack and avoid over-capacity growth steps.
+- At this dataset size, direct memory savings for candidate_array would be about 19680 bytes.
+- This is an optimization opportunity, not required for correctness.
+
+Amiga integration risk assessment:
+- PC harness result confirms the dominant single block is one contiguous 640 KiB-class candidate array payload.
+- On Amiga AllocVec, contiguous allocation availability and fragmentation can be a bigger constraint than total free memory.
+- Risk level for first integration:
+  - acceptable with caveat for systems that have sufficient contiguous Fast RAM.
+  - potentially fragile on highly fragmented or very low-memory targets.
+- Recommendation for current milestone:
+  - keep as-is for first WHDFetch integration (investigation objective met; no obvious bug).
+  - later improvement option: pre-count and exact-size candidate array (or bounded chunking) if Amiga runtime tests show fragmentation failures.
+
+Caveat:
+- These measurements and allocation behavior were captured in the PC harness runtime allocator.
+- Final Amiga behavior should be validated with real AllocVec telemetry on representative target hardware/configurations.
+
+## Phase 15 Amiga Variant Test Utility
+
+- Date: 2026-04-29
+- Objective status:
+  - Added a standalone Amiga CLI test utility for the existing compact selector path.
+  - No integration into main WHDFetch runtime.
+  - No selector behavior changes were introduced intentionally.
+  - Binary cache/blob work remains explicitly deferred.
+
+Files added:
+- tools/variant_harness/src/amiga_varianttest.c
+
+Files updated:
+- tools/variant_harness/Makefile
+- docs/variant_harness_data_loading_storage_analysis.md
+
+Build target added:
+- tools/variant_harness Makefile target: `varianttest-amiga`
+- intended output binary: `Bin/Amiga/varianttest`
+- object output folder: `build/amiga/varianttest/`
+
+CLI usage:
+- `varianttest [DATFILE] [PROFILE]`
+- help flags: `HELP`, `?`, `-h`, `--help`
+
+Examples:
+- `varianttest`
+- `varianttest "Bin/Amiga/temp/Dat files/Games(2026-04-17).txt"`
+- `varianttest "Bin/Amiga/temp/Dat files/Games(2026-04-17).txt" default`
+
+Default path resolution implemented:
+- DAT candidates (in order):
+  - `temp/Dat files/Games(2026-04-17).txt`
+  - `Bin/Amiga/temp/Dat files/Games(2026-04-17).txt`
+  - `PROGDIR:temp/Dat files/Games(2026-04-17).txt`
+- profile resolution:
+  - if PROFILE looks like a path, load directly
+  - otherwise resolves `<name>.profile` from:
+    - `data/Profiles/`
+    - `tools/variant_harness/data/Profiles/`
+    - `PROGDIR:data/Profiles/`
+    - `PROGDIR:tools/variant_harness/data/Profiles/`
+- defs resolution:
+  - `data/Defs`
+  - `tools/variant_harness/data/Defs`
+  - `PROGDIR:data/Defs`
+  - `PROGDIR:tools/variant_harness/data/Defs`
+
+Output files written by utility:
+- summary:
+  - primary: `PROGDIR:varianttest_result.txt`
+  - fallback: `varianttest_result.txt`
+- selected archive list (one selected archive filename per line in original input order):
+  - primary: `PROGDIR:varianttest_selected.txt`
+  - fallback: `varianttest_selected.txt`
+
+Terminal output behavior:
+- Prints the same summary fields that are written to summary file.
+- Prints the first 10 selected archive names for quick validation.
+- Does not dump full selection list to console.
+
+Summary fields currently emitted:
+- test label/version
+- DAT file path used
+- profile path used
+- defs path used
+- candidate_count
+- selected_count
+- group_count
+- duplicate_group_count
+- largest_duplicate_group_size
+- elapsed_ms (or timing unavailable line)
+- actual_peak_heap_bytes
+- actual_current_heap_bytes
+- actual_current_heap_bytes_after_cleanup
+- largest_single_allocation_bytes
+- allocation_count/free_count/realloc_count
+- failed_allocation_count
+- all_tracked_allocations_freed
+- result success/failure
+- error message on failure
+
+PC regression status:
+- Before changes: `make clean ; make ; make test` passed.
+- After changes: `make clean ; make ; make test` passed.
+- Existing harness behavior and milestone test outputs remain passing.
+
+Amiga vbcc build status in this environment:
+- `make varianttest-amiga` target and compile commands are present and execute.
+- Build progressed through multiple object files (including `amiga_varianttest.o`, `vh_csv.o`, `vh_memtrack.o`, `vh_parse.o`, `vh_profile.o`, `vh_score.o`, `vh_group.o`, `vh_string_pool.o`).
+- Final link did not succeed in this local setup due unresolved vbcc runtime symbols (`___builtin_*`, `__ieee*`) when linking harness objects.
+- Result in this environment: no final `Bin/Amiga/varianttest` binary produced yet.
+
+Known limitations:
+- This utility is intentionally concise and standalone; no GUI/report-expansion/cache features were added.
+- Runtime symbol resolution for this harness subset under local vbcc setup needs follow-up to complete final link consistently.
+
+How to run on Amiga once linked binary is available:
+- Copy `varianttest` to `Bin/Amiga` (or run from your chosen tools folder).
+- Ensure DAT file and profile/Defs paths are available per resolution rules above.
+- Run:
+  - `varianttest`
+  - or `varianttest "PROGDIR:temp/Dat files/Games(2026-04-17).txt" default`
+
+Requested runback data for hardware/emulation validation:
+- CPU config used (68000/68020/68030/68040/68060, FPU yes/no)
+- total and free Fast RAM / Chip RAM at start
+- elapsed_ms
+- candidate_count/selected_count/group_count
+- duplicate_group_count/largest_duplicate_group_size
+- actual_peak_heap_bytes
+- largest_single_allocation_bytes
+- all_tracked_allocations_freed
+- any failure line from summary output
+
+Deferred work note:
+- Binary blob/cache mechanisms remain deferred by decision; this phase is only a standalone viability test utility for real/emulated Amiga runs.
+
+## Historical Appendix (Pre-Refactor Baseline Snapshot)
+
+The sections below are retained for historical comparison with pre-refactor behavior and structure.
+
 ## 1. End-to-End Runtime Flow
 
 1. main.c run_selection loads CSV parse context (vh_parse_context_load).
